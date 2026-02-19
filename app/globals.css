@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 1. 전체적인 배경을 더 연하고 화사한 하늘색으로 변경 */
+  --background: #f0f7ff; 
+  --foreground: #1e293b; /* 텍스트는 완전 검정보다 짙은 네이비가 세련됨 */
 }
 
 @theme inline {
@@ -12,15 +13,58 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  letter-spacing: -0.025em; /* 글자 간격을 살짝 좁히면 더 예쁩니다 */
+}
+
+/* --- FullCalendar 커스텀 스타일 --- */
+
+/* 1. 달력 상단 제목 (2026년 2월) */
+.fc .fc-toolbar-title {
+  color: #2563eb; /* 선명한 블루 */
+  font-weight: 850;
+}
+
+/* 2. 요일 및 날짜 */
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number {
+  color: #475569 !important; /* 슬레이트 그레이로 부드럽게 */
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+/* 3. 오늘 날짜 강조 */
+.fc .fc-day-today {
+  background-color: #dbeafe !important; /* 조금 더 명확한 파스텔 블루 */
+}
+
+/* 4. 이벤트(막대기) 디자인 */
+.fc-v-event, .fc-h-event {
+  background-color: #3b82f6 !important; /* 이벤트 바 색상 */
+  border: none !important;
+  border-radius: 4px !important;
+  padding: 1px 4px !important;
+}
+
+.fc-event-title {
+  color: #000000 !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+}
+
+/* --- 기타 UI 요소 --- */
+
+/* 얇고 세련된 스크롤바 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
 }
