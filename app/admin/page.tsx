@@ -31,7 +31,7 @@ export default function AdminPage() {
   const [regYear, setRegYear] = useState(new Date().getFullYear());
   const [regMonth, setRegMonth] = useState(new Date().getMonth() + 1);
   const [regDates, setRegDates] = useState<string[]>([]); 
-  const [regLocation, setRegLocation] = useState("스누 체육관");
+  const [regLocation, setRegLocation] = useState("구체");
   const [regCapacity, setRegCapacity] = useState(50);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
