@@ -10,11 +10,10 @@ import { supabase } from "../../supabase";
 export default function AdminPage() {
   const router = useRouter();
   
-  const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "monthly" | "members" | "register">("daily"); // 기본탭을 출석으로!
+  const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "monthly" | "members" | "register">("daily"); 
   
   const [events, setEvents] = useState<any[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  // 🔥 출석 탭 우측 상단에 띄워줄 선택된 일정 정보
   const [selectedEventTitle, setSelectedEventTitle] = useState<string>("");
   const [selectedEventDate, setSelectedEventDate] = useState<Date | null>(null);
   const [applicants, setApplicants] = useState<any[]>([]);
@@ -185,24 +184,37 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+    <div className="min-h-screen bg-slate-50 p-2 md:p-8">
+      
+      {/* 🔥 [추가됨] 모바일에서 캘린더 글자 크기를 확 줄여주는 CSS */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .fc .fc-toolbar-title { font-size: 1.1rem !important; font-weight: 900; }
+        .fc .fc-button { padding: 0.3em 0.6em; font-size: 0.8rem; }
+        @media (max-width: 768px) {
+          .fc .fc-event { padding: 1px; margin-bottom: 1px !important; }
+          .fc .fc-event-title { font-size: 0.6rem !important; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .fc .fc-daygrid-day-number { font-size: 0.7rem !important; padding: 2px; }
+          .fc .fc-daygrid-event-harness { margin-top: 1px !important; }
+        }
+      `}} />
+
       <div className="max-w-[1400px] mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[85vh] flex flex-col relative">
         
         <div className="bg-slate-900 text-white">
-          <div className="p-6 pb-4 flex justify-between items-center">
+          <div className="p-4 md:p-6 pb-4 flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-black tracking-tight">👑 스누민턴 운영진 대시보드</h1>
-              <p className="text-slate-300 text-sm mt-1">동아리 일정 기획 및 출석 관리</p>
+              <h1 className="text-xl md:text-2xl font-black tracking-tight">👑 스누민턴 운영진</h1>
+              <p className="text-slate-300 text-xs md:text-sm mt-1">동아리 일정 및 출석 관리</p>
             </div>
             <button 
               onClick={() => router.push('/')}
-              className="px-5 py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-sm font-bold transition-colors flex items-center gap-2 border border-slate-700"
+              className="px-3 py-2 md:px-5 md:py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-xs md:text-sm font-bold transition-colors flex items-center gap-2 border border-slate-700"
             >
-              🏠 메인 홈으로
+              🏠 <span className="hidden md:inline">메인 홈으로</span>
             </button>
           </div>
           
-          <div className="flex px-6 gap-6 text-sm font-bold border-t border-slate-700 overflow-x-auto custom-scrollbar">
+          <div className="flex px-4 md:px-6 gap-4 md:gap-6 text-xs md:text-sm font-bold border-t border-slate-700 overflow-x-auto custom-scrollbar">
             <button onClick={() => setAdminTab("daily")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "daily" ? "border-blue-400 text-blue-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📝 현장 출석 체크</button>
             <button onClick={() => setAdminTab("calendar")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "calendar" ? "border-amber-400 text-amber-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📅 일정 수정/삭제</button>
             <button onClick={() => setAdminTab("monthly")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "monthly" ? "border-blue-400 text-blue-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📊 월별 상세 출석부</button>
@@ -214,17 +226,16 @@ export default function AdminPage() {
         <div className="flex flex-1 flex-col md:flex-row min-h-0 bg-slate-50">
           
           {/* ========================================= */}
-          {/* 🔥 탭 1: 📝 현장 출석 체크 (좌측: 달력 / 우측: 명단) */}
+          {/* 탭 1: 📝 현장 출석 체크 */}
           {/* ========================================= */}
           {adminTab === "daily" && (
             <>
-              {/* 왼쪽: 출석용 달력 (넓이를 55% 정도로 넉넉하게) */}
-              <div className="w-full md:w-[55%] border-r border-slate-100 p-4 md:p-6 overflow-y-auto bg-white custom-scrollbar">
-                <div className="mb-4">
-                  <h2 className="font-bold text-slate-800">출석 체크용 캘린더</h2>
-                  <p className="text-xs text-slate-400">날짜를 클릭하여 출석부를 확인하세요.</p>
+              <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
+                <div className="mb-2 md:mb-4">
+                  <h2 className="font-bold text-slate-800 text-sm md:text-base">출석 체크용 캘린더</h2>
                 </div>
                 
+                {/* 🔥 today 제거, 콤팩트 달력 적용 */}
                 <FullCalendar
                   plugins={[dayGridPlugin, interactionPlugin]}
                   initialView="dayGridMonth"
@@ -232,8 +243,8 @@ export default function AdminPage() {
                   height="auto"
                   locale="ko"
                   displayEventTime={false}
+                  headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} 
                   eventClick={(info) => {
-                    // 🔥 출석 탭에서 달력 일정을 누르면, 우측 명단 창을 업데이트!
                     setSelectedEventId(info.event.id);
                     setSelectedEventTitle(info.event.title);
                     setSelectedEventDate(info.event.start);
@@ -242,30 +253,29 @@ export default function AdminPage() {
                 />
               </div>
 
-              {/* 오른쪽: 신청자 명단 및 출석체크 버튼 */}
-              <div className="w-full md:w-[45%] p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
+              <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedEventId ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                    <span className="text-4xl mb-4">👈</span>
-                    <p className="font-medium mt-2">달력에서 일정을 선택해주세요.</p>
+                  <div className="h-40 md:h-full flex flex-col items-center justify-center text-slate-400">
+                    <span className="text-3xl md:text-4xl mb-2 md:mb-4">👆</span>
+                    <p className="font-medium text-sm">달력에서 일정을 선택해주세요.</p>
                   </div>
                 ) : (
                   <div>
-                    <div className="flex justify-between items-end mb-6">
+                    <div className="flex justify-between items-end mb-4 md:mb-6">
                       <div>
-                        <span className="text-xs font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded mb-2 inline-block">
+                        <span className="text-[10px] md:text-xs font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded mb-1 md:mb-2 inline-block">
                           {selectedEventDate && new Date(selectedEventDate).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
                         </span>
-                        <h2 className="text-xl font-black text-slate-900">{selectedEventTitle} 출석부</h2>
+                        <h2 className="text-lg md:text-xl font-black text-slate-900">{selectedEventTitle} 출석부</h2>
                       </div>
-                      <span className="text-sm font-bold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-sm">
+                      <span className="text-xs md:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 md:px-3 py-1.5 rounded-xl shadow-sm">
                         총 {applicants.length}명
                       </span>
                     </div>
 
                     <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
                       {applicants.length === 0 ? (
-                        <div className="p-10 text-center text-slate-400">신청자가 없습니다.</div>
+                        <div className="p-8 text-center text-slate-400 text-sm">신청자가 없습니다.</div>
                       ) : (
                         applicants.map((app, i) => {
                           const status = app.attendance_status || 'none';
@@ -276,16 +286,16 @@ export default function AdminPage() {
                           else if (status === 'late') { btnClass = "bg-amber-100 text-amber-700 border-amber-200 shadow-inner"; btnText = "🔺 지각 처리"; }
 
                           return (
-                            <div key={app.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs font-black text-slate-300 w-4">{i + 1}</span>
-                                <span className="font-bold text-slate-800 text-sm">{app.user_name}</span>
-                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold">{app.user_type}</span>
-                                {app.participation_type !== 'full' && <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded font-bold">부분참</span>}
+                            <div key={app.id} className="flex items-center justify-between p-3 md:p-3.5 hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                                <span className="text-[10px] md:text-xs font-black text-slate-300 w-3 md:w-4">{i + 1}</span>
+                                <span className="font-bold text-slate-800 text-xs md:text-sm truncate max-w-[60px] md:max-w-none">{app.user_name}</span>
+                                <span className="text-[8px] md:text-[10px] bg-slate-100 text-slate-500 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
+                                {app.participation_type !== 'full' && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">부분참</span>}
                               </div>
-                              <div className="flex items-center gap-1.5">
-                                <button onClick={() => cycleAttendance(app.id, status)} className={`w-24 py-1.5 text-xs font-bold rounded-lg border transition-all active:scale-95 ${btnClass}`}>{btnText}</button>
-                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-red-300 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors">✕</button>
+                              <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0">
+                                <button onClick={() => cycleAttendance(app.id, status)} className={`w-20 md:w-24 py-1.5 md:py-2 text-[10px] md:text-xs font-bold rounded-xl border transition-all active:scale-95 ${btnClass}`}>{btnText}</button>
+                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-red-300 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors text-xs md:text-sm">✕</button>
                               </div>
                             </div>
                           );
@@ -299,15 +309,15 @@ export default function AdminPage() {
           )}
 
           {/* ========================================= */}
-          {/* 탭 2: 📅 일정 수정/삭제 (기존 달력 탭) */}
+          {/* 탭 2: 📅 일정 수정/삭제 (today 제거) */}
           {/* ========================================= */}
           {adminTab === "calendar" && (
-            <div className="w-full p-4 md:p-8 overflow-y-auto">
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 w-full max-w-5xl mx-auto">
+            <div className="w-full p-2 md:p-8 overflow-y-auto">
+              <div className="bg-white p-4 md:p-6 rounded-3xl shadow-sm border border-slate-200 w-full max-w-5xl mx-auto">
                 <div className="flex justify-between items-end mb-4">
                   <div>
-                    <h2 className="text-xl font-black text-slate-800">전체 일정 관리</h2>
-                    <p className="text-sm text-slate-500 mt-1">달력에서 일정을 클릭하여 정원 수정, 삭제 등을 진행하세요.</p>
+                    <h2 className="text-lg md:text-xl font-black text-slate-800">전체 일정 관리</h2>
+                    <p className="text-xs md:text-sm text-slate-500 mt-1">달력에서 일정을 클릭하여 수정/삭제하세요.</p>
                   </div>
                 </div>
                 
@@ -318,37 +328,41 @@ export default function AdminPage() {
                   height="auto"
                   locale="ko"
                   displayEventTime={false}
-                  eventClick={handleEventClickForEdit} // 클릭 시 설정 모달 오픈
+                  headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} 
+                  eventClick={handleEventClickForEdit} 
                 />
               </div>
             </div>
           )}
 
           {/* ========================================= */}
-          {/* 나머지 탭 3, 4, 5 (월별출석부, 부원관리, 일괄등록) 완벽 동일 유지 */}
+          {/* 탭 3: 📊 월별 상세 출석부 (모바일 가로 스크롤 완벽 대응) */}
           {/* ========================================= */}
           {adminTab === "monthly" && (
-            <div className="w-full p-4 md:p-8 overflow-y-auto bg-slate-50 custom-scrollbar">
+            <div className="w-full p-3 md:p-8 overflow-y-auto bg-slate-50 custom-scrollbar">
               <div className="max-w-full mx-auto">
-                <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                  <button onClick={() => setCurrentMonth(prev => prev === 1 ? 12 : prev - 1)} className="p-2 hover:bg-slate-100 rounded-lg font-bold">◀ 이전 달</button>
+                <div className="flex items-center justify-between mb-4 md:mb-6 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100">
+                  <button onClick={() => setCurrentMonth(prev => prev === 1 ? 12 : prev - 1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">◀</button>
                   <div className="text-center">
-                    <h2 className="text-2xl font-black text-slate-800">{currentYear}년 {currentMonth}월 상세 출석부</h2>
+                    <h2 className="text-lg md:text-2xl font-black text-slate-800">{currentYear}년 {currentMonth}월 상세 출석부</h2>
                   </div>
-                  <button onClick={() => setCurrentMonth(prev => prev === 12 ? 1 : prev + 1)} className="p-2 hover:bg-slate-100 rounded-lg font-bold">다음 달 ▶</button>
+                  <button onClick={() => setCurrentMonth(prev => prev === 12 ? 1 : prev + 1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">▶</button>
                 </div>
+                
+                {/* 🔥 min-w-[800px] 제거하고 min-w-max 적용하여 스크롤 깔끔하게 처리 */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto custom-scrollbar">
-                  <table className="w-full text-sm text-center min-w-[800px]">
+                  <table className="w-full text-xs md:text-sm text-center min-w-max border-collapse">
                     <thead>
                       <tr className="bg-slate-100 text-slate-500 font-bold border-b border-slate-200">
-                        <th className="p-3 sticky left-0 bg-slate-100 z-10 w-16">순위</th>
-                        <th className="p-3 sticky left-16 bg-slate-100 z-10 w-24 text-left">이름</th>
-                        <th className="p-3 w-20 text-blue-600">총 횟수</th>
+                        {/* 🔥 모바일에서 순위/이름 칸 너비 대폭 축소 (w-8, w-14) */}
+                        <th className="p-2 md:p-3 sticky left-0 bg-slate-100 z-10 w-8 md:w-16 border-r border-slate-200">순위</th>
+                        <th className="p-2 md:p-3 sticky left-8 md:left-16 bg-slate-100 z-10 w-16 md:w-24 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-200">이름</th>
+                        <th className="p-2 md:p-3 w-12 md:w-20 text-blue-600 border-r border-slate-200">총 횟수</th>
                         {monthEventsList.map(ev => (
-                          <th key={ev.id} className="p-2 min-w-[50px] border-l border-slate-200">
+                          <th key={ev.id} className="p-1.5 md:p-2 min-w-[36px] md:min-w-[50px] border-r border-slate-100 bg-white">
                             <div className="flex flex-col items-center">
-                              <span className="text-[10px] text-slate-400 font-medium">{ev.type === 'normal' ? '정규' : ev.type === 'lesson' ? '레슨' : '행사'}</span>
-                              <span className="text-slate-800">{new Date(ev.start_at).getDate()}일</span>
+                              <span className="text-[8px] md:text-[10px] text-slate-400 font-medium">{ev.type === 'normal' ? '정규' : ev.type === 'lesson' ? '레슨' : '행사'}</span>
+                              <span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}일</span>
                             </div>
                           </th>
                         ))}
@@ -356,44 +370,50 @@ export default function AdminPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {monthlyRanking.map((stat, idx) => (
-                        <tr key={stat.id} className="hover:bg-slate-50">
-                          <td className="p-3 text-slate-400 font-bold sticky left-0 bg-white/90 z-10">{idx + 1}</td>
-                          <td className="p-3 text-left font-bold text-slate-800 sticky left-16 bg-white/90 z-10">{stat.name}</td>
-                          <td className="p-3 font-black text-blue-600 bg-blue-50/30">{stat.count}</td>
+                        <tr key={stat.id} className="hover:bg-slate-50 transition-colors bg-white">
+                          <td className="p-2 md:p-3 text-slate-400 font-bold sticky left-0 bg-white/95 backdrop-blur-sm z-10 border-r border-slate-50">{idx + 1}</td>
+                          <td className="p-2 md:p-3 text-left font-bold text-slate-800 sticky left-8 md:left-16 bg-white/95 backdrop-blur-sm z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-50 truncate max-w-[4rem] md:max-w-none">{stat.name}</td>
+                          <td className="p-2 md:p-3 font-black text-blue-600 bg-blue-50/30 border-r border-slate-50">{stat.count}</td>
                           {monthEventsList.map(ev => {
                             const status = stat.attendanceRecord[ev.id];
-                            return <td key={ev.id} className="p-3 border-l border-slate-100">{status === 'present' ? "🟢" : status === 'late' ? "🔺" : status === 'none' ? <span className="text-red-300">✕</span> : "-"}</td>;
+                            return <td key={ev.id} className="p-1.5 md:p-3 border-r border-slate-50 text-sm md:text-base">{status === 'present' ? "🟢" : status === 'late' ? "🔺" : status === 'none' ? <span className="text-red-300 font-bold text-[10px] md:text-xs">✕</span> : <span className="text-slate-200 font-light text-[10px] md:text-xs">-</span>}</td>;
                           })}
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  {monthlyRanking.length === 0 && (
+                     <div className="p-8 text-center text-slate-400 text-sm">등록된 부원 명단이 없습니다.</div>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
+          {/* ========================================= */}
+          {/* 탭 4: 👥 부원 명단 관리 */}
+          {/* ========================================= */}
           {adminTab === "members" && (
-            <div className="w-full p-6 md:p-10 overflow-y-auto bg-slate-50 custom-scrollbar">
+            <div className="w-full p-4 md:p-10 overflow-y-auto bg-slate-50 custom-scrollbar">
               <div className="max-w-3xl mx-auto">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8 flex flex-col gap-3">
-                  <h3 className="font-black text-slate-800 text-lg">새 부원 일괄 추가</h3>
-                  <textarea value={bulkMemberNames} onChange={(e) => setBulkMemberNames(e.target.value)} placeholder="엑셀 복붙..." className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl outline-none" />
-                  <div className="flex gap-3 justify-end items-center mt-2">
-                    <select value={newMemberType} onChange={(e) => setNewMemberType(e.target.value)} className="px-4 py-2 border rounded-xl">
+                <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col gap-3">
+                  <h3 className="font-black text-slate-800 text-base md:text-lg">새 부원 일괄 추가</h3>
+                  <textarea value={bulkMemberNames} onChange={(e) => setBulkMemberNames(e.target.value)} placeholder="엑셀 복붙..." className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl outline-none text-sm" />
+                  <div className="flex gap-2 justify-end items-center mt-2">
+                    <select value={newMemberType} onChange={(e) => setNewMemberType(e.target.value)} className="px-3 py-2 border rounded-xl text-sm font-bold">
                       <option value="member">부원</option>
                       <option value="ob">OB</option>
                     </select>
-                    <button onClick={handleAddMembers} className="px-6 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600">등록</button>
+                    <button onClick={handleAddMembers} className="px-4 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 text-sm">등록</button>
                   </div>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                  <div className="p-4 bg-slate-100 font-bold text-slate-600">전체 명단</div>
-                  <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                  <div className="p-4 bg-slate-100 font-bold text-slate-600 text-sm">전체 명단</div>
+                  <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
                     {members.map(m => (
-                      <div key={m.id} className="flex justify-between items-center p-4 hover:bg-slate-50">
-                        <div className="flex items-center gap-3"><span className="font-bold">{m.name}</span></div>
-                        <button onClick={() => handleDeleteMember(m.id)} className="text-xs text-red-400">삭제</button>
+                      <div key={m.id} className="flex justify-between items-center p-3 hover:bg-slate-50">
+                        <div className="flex items-center gap-2"><span className="font-bold text-sm">{m.name}</span><span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase">{m.user_type}</span></div>
+                        <button onClick={() => handleDeleteMember(m.id)} className="text-xs text-red-400 px-2 py-1">삭제</button>
                       </div>
                     ))}
                   </div>
@@ -402,49 +422,53 @@ export default function AdminPage() {
             </div>
           )}
 
+          {/* ========================================= */}
+          {/* 탭 5: 🚀 정기운동 일괄등록 */}
+          {/* ========================================= */}
           {adminTab === "register" && (
-            <div className="w-full p-4 md:p-8 overflow-y-auto bg-slate-50 flex flex-col md:flex-row gap-8">
-              <div className="flex-1 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                <div className="flex items-center justify-between mb-8">
+            <div className="w-full p-4 md:p-8 overflow-y-auto bg-slate-50 flex flex-col md:flex-row gap-6 md:gap-8">
+              <div className="flex-1 bg-white p-4 md:p-6 rounded-3xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between mb-4 md:mb-8">
                   <button onClick={() => setRegMonth(prev => prev === 1 ? 12 : prev - 1)} className="p-2 hover:bg-slate-100 rounded-lg font-bold">◀</button>
-                  <h2 className="text-2xl font-black text-slate-800 tracking-tight">{regYear}년 {regMonth}월 정기운동</h2>
+                  <h2 className="text-lg md:text-2xl font-black text-slate-800 tracking-tight">{regYear}년 {regMonth}월 등록</h2>
                   <button onClick={() => setRegMonth(prev => prev === 12 ? 1 : prev + 1)} className="p-2 hover:bg-slate-100 rounded-lg font-bold">▶</button>
                 </div>
-                <div className="grid grid-cols-7 gap-2 text-center mb-2">
-                  <div className="font-bold text-red-400 text-sm">일</div><div className="font-bold text-slate-400 text-sm">월</div><div className="font-bold text-blue-600 text-sm">화</div><div className="font-bold text-slate-400 text-sm">수</div><div className="font-bold text-blue-600 text-sm">목</div><div className="font-bold text-slate-400 text-sm">금</div><div className="font-bold text-blue-600 text-sm">토</div>
+                <div className="grid grid-cols-7 gap-1 md:gap-2 text-center mb-2">
+                  <div className="font-bold text-red-400 text-xs md:text-sm">일</div><div className="font-bold text-slate-400 text-xs md:text-sm">월</div><div className="font-bold text-blue-600 text-xs md:text-sm">화</div><div className="font-bold text-slate-400 text-xs md:text-sm">수</div><div className="font-bold text-blue-600 text-xs md:text-sm">목</div><div className="font-bold text-slate-400 text-xs md:text-sm">금</div><div className="font-bold text-blue-600 text-xs md:text-sm">토</div>
                 </div>
-                <div className="grid grid-cols-7 gap-2">
+                <div className="grid grid-cols-7 gap-1 md:gap-2">
                   {getCalendarCells().map((day, idx) => {
-                    if (!day) return <div key={`blank-${idx}`} className="p-4"></div>;
+                    if (!day) return <div key={`blank-${idx}`} className="p-2 md:p-4"></div>;
                     const dateStr = `${regYear}-${String(regMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const isSelected = regDates.includes(dateStr);
                     return (
-                      <button key={dateStr} onClick={() => toggleRegDate(dateStr)} className={`aspect-square flex flex-col items-center justify-center rounded-2xl text-lg font-bold transition-all border-2 ${isSelected ? 'bg-purple-50 border-purple-500 text-purple-700 shadow-sm' : 'bg-white border-slate-100 text-slate-600 hover:border-purple-200'}`}>
+                      <button key={dateStr} onClick={() => toggleRegDate(dateStr)} className={`aspect-square flex flex-col items-center justify-center rounded-xl md:rounded-2xl text-base md:text-lg font-bold transition-all border-2 ${isSelected ? 'bg-purple-50 border-purple-500 text-purple-700 shadow-sm' : 'bg-white border-slate-100 text-slate-600 hover:border-purple-200'}`}>
                         {day}
-                        {isSelected && <span className="text-[10px] mt-1 bg-purple-500 text-white px-2 py-0.5 rounded-full">등록</span>}
+                        {/* 🔥 모바일에서는 등록 글씨를 숨기고 색깔만 유지되게 변경 */}
+                        {isSelected && <span className="hidden md:inline-block text-[10px] mt-1 bg-purple-500 text-white px-2 py-0.5 rounded-full">등록</span>}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <div className="w-full md:w-80 flex flex-col gap-6">
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                  <h3 className="font-black text-lg text-slate-800 mb-6">⚙️ 공통 설정 내역</h3>
-                  <div className="space-y-5">
+              <div className="w-full md:w-80 flex flex-col gap-4 md:gap-6">
+                <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200">
+                  <h3 className="font-black text-base md:text-lg text-slate-800 mb-4 md:mb-6">⚙️ 공통 설정</h3>
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">📍 장소</label>
-                      <input type="text" value={regLocation} onChange={(e) => setRegLocation(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-purple-400 font-bold" />
+                      <label className="block text-xs font-bold text-slate-500 mb-1.5">📍 장소</label>
+                      <input type="text" value={regLocation} onChange={(e) => setRegLocation(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-purple-400 font-bold text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">👥 정원 (명)</label>
-                      <input type="number" value={regCapacity} onChange={(e) => setRegCapacity(Number(e.target.value))} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-purple-400 font-bold" />
+                      <label className="block text-xs font-bold text-slate-500 mb-1.5">👥 정원 (명)</label>
+                      <input type="number" value={regCapacity} onChange={(e) => setRegCapacity(Number(e.target.value))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-purple-400 font-bold text-sm" />
                     </div>
                   </div>
                 </div>
-                <div className="bg-slate-900 p-6 rounded-3xl shadow-xl text-white flex flex-col justify-center items-center text-center">
-                  <span className="text-slate-400 text-sm font-bold mb-2">선택된 날짜</span>
-                  <div className="text-4xl font-black mb-6 text-purple-400">{regDates.length}일</div>
-                  <button onClick={handleBulkRegister} disabled={regDates.length === 0} className="w-full py-4 bg-purple-500 text-white font-black rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50 shadow-lg shadow-purple-500/30">일괄 등록하기 🚀</button>
+                <div className="bg-slate-900 p-5 md:p-6 rounded-3xl shadow-xl text-white flex flex-col justify-center items-center text-center">
+                  <span className="text-slate-400 text-xs md:text-sm font-bold mb-1 md:mb-2">선택된 날짜</span>
+                  <div className="text-3xl md:text-4xl font-black mb-4 md:mb-6 text-purple-400">{regDates.length}일</div>
+                  <button onClick={handleBulkRegister} disabled={regDates.length === 0} className="w-full py-3.5 md:py-4 bg-purple-500 text-white font-black rounded-xl hover:bg-purple-600 transition-colors disabled:opacity-50 shadow-lg shadow-purple-500/30 text-sm md:text-base">일괄 등록하기 🚀</button>
                 </div>
               </div>
             </div>
@@ -456,21 +480,21 @@ export default function AdminPage() {
         {/* ========================================= */}
         {isEditModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4" onClick={() => setIsEditModalOpen(false)}>
-            <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-slate-100 flex flex-col gap-5 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                <h3 className="font-black text-xl text-slate-800">⚙️ 일정 상세 설정</h3>
+            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-md border border-slate-100 flex flex-col gap-4 md:gap-5 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3 md:pb-4">
+                <h3 className="font-black text-lg md:text-xl text-slate-800">⚙️ 일정 상세 설정</h3>
                 <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
               </div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">일정 제목 (선택)</label><input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">📍 장소 변경</label><input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">👥 정원 수정 (명)</label><input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Number(e.target.value))} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800" /></div>
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditCountAttendance(!editCountAttendance)}>
-                <div><div className="font-bold text-sm text-slate-800">출석부 통계 반영</div><div className="text-[10px] text-slate-500 mt-0.5">이 일정을 월별 출석 횟수에 포함합니다.</div></div>
-                <div className={`w-12 h-6 rounded-full transition-colors relative ${editCountAttendance ? 'bg-amber-400' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${editCountAttendance ? 'left-7' : 'left-1'}`} /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">일정 제목 (선택)</label><input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">📍 장소 변경</label><input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">👥 정원 수정 (명)</label><input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Number(e.target.value))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditCountAttendance(!editCountAttendance)}>
+                <div><div className="font-bold text-xs md:text-sm text-slate-800">출석부 통계 반영</div><div className="text-[9px] md:text-[10px] text-slate-500 mt-0.5">이 일정을 월별 출석 횟수에 포함합니다.</div></div>
+                <div className={`w-10 md:w-12 h-5 md:h-6 rounded-full transition-colors relative ${editCountAttendance ? 'bg-amber-400' : 'bg-slate-300'}`}><div className={`w-3.5 h-3.5 md:w-4 md:h-4 bg-white rounded-full absolute top-[3px] md:top-1 transition-all ${editCountAttendance ? 'left-[22px] md:left-7' : 'left-1'}`} /></div>
               </div>
-              <div className="flex gap-3 mt-4">
-                <button onClick={handleDeleteEvent} className="px-5 py-3.5 bg-red-50 text-red-500 font-bold rounded-xl hover:bg-red-100 transition-colors border border-red-100">🗑️ 삭제</button>
-                <button onClick={handleUpdateEvent} className="flex-1 py-3.5 bg-amber-400 text-amber-900 font-black rounded-xl hover:bg-amber-500 transition-colors shadow-lg shadow-amber-400/30">수정 내용 저장</button>
+              <div className="flex gap-2 md:gap-3 mt-2 md:mt-4">
+                <button onClick={handleDeleteEvent} className="px-4 py-3 bg-red-50 text-red-500 font-bold text-sm rounded-xl hover:bg-red-100 transition-colors border border-red-100 whitespace-nowrap">🗑️ 삭제</button>
+                <button onClick={handleUpdateEvent} className="flex-1 py-3 bg-amber-400 text-amber-900 font-black text-sm rounded-xl hover:bg-amber-500 transition-colors shadow-lg shadow-amber-400/30">수정 저장</button>
               </div>
             </div>
           </div>
