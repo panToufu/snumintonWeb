@@ -1,31 +1,51 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // 🔥 페이지 이동을 위한 도구 추가
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { supabase } from "../supabase";
+import { supabase } from "../supabase"; // 경로 주의
 
 export default function Home() {
+  const router = useRouter(); // 🔥 라우터 초기화
+
+  // 기존 상태 변수들
   const [events, setEvents] = useState<any[]>([]);
-  const [polls, setPolls] = useState<any[]>([]); // 🔥 추가: 투표 데이터 상태
+  const [polls, setPolls] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [applicants, setApplicants] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<"info" | "list">("info");
   
-  // 입력 폼 상태들
   const [userName, setUserName] = useState("");
   const [userType, setUserType] = useState("member");
   const [guestPw, setGuestPw] = useState("");
   const [participationType, setParticipationType] = useState("full");
-  const [lessonChoice, setLessonChoice] = useState("tue_thu"); // 🔥 추가: 레슨 요일 (기본값 화목)
-  const [afterpartyJoin, setAfterpartyJoin] = useState(false); // 🔥 추가: 뒷풀이 참석 여부 (기본값 불참)
+  const [lessonChoice, setLessonChoice] = useState("tue_thu");
+  const [afterpartyJoin, setAfterpartyJoin] = useState(false);
+
+  // 출석 랭킹 상태
+  const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
+  const [rankingMonth, setRankingMonth] = useState(new Date().getMonth() + 1);
+  const [rankingYear, setRankingYear] = useState(new Date().getFullYear());
+  const [monthlyRanking, setMonthlyRanking] = useState<any[]>([]);
+  const [monthEventsList, setMonthEventsList] = useState<any[]>([]); 
+
+  // 🔥 관리자 로그인 모달 상태
+  const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
+  const [adminPwInput, setAdminPwInput] = useState("");
 
   useEffect(() => { 
     fetchEvents(); 
-    fetchPolls(); // 🔥 추가: 컴포넌트 마운트 시 투표 데이터도 가져오기
+    fetchPolls(); 
   }, []);
+
+  useEffect(() => {
+    if (isRankingModalOpen) {
+      fetchRanking();
+    }
+  }, [isRankingModalOpen, rankingMonth, rankingYear]);
 
   const fetchEvents = async () => {
     const { data } = await supabase.from("events").select("*");
@@ -36,7 +56,6 @@ export default function Home() {
     }
   };
 
-  // 🔥 추가: 투표 데이터 불러오기 함수
   const fetchPolls = async () => {
     const { data } = await supabase.from("polls").select("*").order("created_at", { ascending: false });
     if (data) setPolls(data);
@@ -46,6 +65,53 @@ export default function Home() {
     const { data } = await supabase.from("applications")
       .select("*").eq("event_id", eventId).order("applied_at", { ascending: true });
     if (data) setApplicants(data);
+  };
+
+  const fetchRanking = async () => {
+    const { data: membersData } = await supabase.from("members").select("*");
+    const membersList = membersData || [];
+
+    const startDate = new Date(rankingYear, rankingMonth - 1, 1).toISOString();
+    const endDate = new Date(rankingYear, rankingMonth, 1).toISOString();
+
+    const { data: monthEvents } = await supabase
+      .from("events")
+      .select("id, start_at, title, type")
+      .gte("start_at", startDate)
+      .lt("start_at", endDate)
+      .order("start_at", { ascending: true });
+      
+    const eventsList = monthEvents || [];
+    setMonthEventsList(eventsList); 
+
+    const eventIds = eventsList.map(e => e.id);
+
+    if (eventIds.length === 0) {
+      setMonthlyRanking(membersList.map(m => ({ ...m, count: 0, attendanceRecord: {} })).sort((a, b) => a.name.localeCompare(b.name)));
+      return;
+    }
+
+    const { data: apps } = await supabase
+      .from("applications")
+      .select("user_name, event_id, attendance_status")
+      .in("event_id", eventIds);
+
+    const ranking = membersList.map(m => {
+      const memberApps = apps?.filter(a => a.user_name === m.name) || [];
+      let count = 0;
+      const attendanceRecord: Record<string, string> = {};
+
+      memberApps.forEach(a => {
+        const status = a.attendance_status || 'none';
+        attendanceRecord[a.event_id] = status;
+        if (status === 'present' || status === 'late') count++;
+      });
+
+      return { ...m, count, attendanceRecord };
+    });
+
+    ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    setMonthlyRanking(ranking);
   };
 
   const getButtonStatus = () => {
@@ -74,23 +140,30 @@ export default function Home() {
   const status = getButtonStatus();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleApply();
-    }
+    if (e.key === 'Enter') handleApply();
   };
 
-  // --- [참가 신청 로직 함수] ---
   const handleApply = async () => {
     if (!userName) return alert("성함을 입력해주세요!");
     if (userType === "guest" && guestPw !== "5678") {
       return alert("게스트 공통 비밀번호가 일치하지 않습니다. 동아리원에게 문의해주세요!");
     }
     const status = getButtonStatus();
-    if (status.disabled) {
-      return alert(status.text + "까지 조금만 기다려주세요!");
+    if (status.disabled) return alert(status.text + "까지 조금만 기다려주세요!");
+
+    if (userType === "member" || userType === "ob") {
+      const { data: memberData } = await supabase
+        .from("members")
+        .select("id")
+        .eq("name", userName)
+        .eq("user_type", userType)
+        .single();
+      
+      if (!memberData) {
+        return alert(`등록되지 않은 ${userType === 'member' ? '부원' : 'OB'} 이름입니다. 이름을 다시 확인하거나 운영진에게 문의해주세요!`);
+      }
     }
 
-    // 🔥 수정: 레슨 선택과 뒷풀이 참석 여부 데이터를 추가로 전송
     const { error } = await supabase.from("applications").insert([
       {
         event_id: selectedEvent.id,
@@ -107,12 +180,8 @@ export default function Home() {
       alert("신청 중 오류가 발생했습니다: " + error.message);
     } else {
       alert(`${userName}님, 신청이 완료되었습니다! 🏸`);
-      
-      setUserName(""); 
-      setGuestPw(""); 
-      setParticipationType("full");
-      setLessonChoice("tue_thu"); // 초기화
-      setAfterpartyJoin(false); // 초기화
+      setUserName(""); setGuestPw(""); setParticipationType("full");
+      setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); 
       setActiveTab("list"); 
     }
@@ -123,11 +192,32 @@ export default function Home() {
     setIsModalOpen(false);
   };
 
-  // 🔥 추가: 정기운동이 아닌 특별 행사(레슨, 총회 등)만 필터링
+  // 🔥 관리자 로그인 처리 함수
+  const handleAdminLogin = () => {
+    if (adminPwInput === "4321") {
+      setIsAdminAuthOpen(false);
+      setAdminPwInput("");
+      router.push("/admin"); // /admin 페이지로 이동!
+    } else {
+      alert("비밀번호가 일치하지 않습니다.");
+      setAdminPwInput(""); // 틀리면 입력창 비우기
+    }
+  };
+
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal');
 
   return (
-    <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen">
+    <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative pb-24">
+      
+      {/* 🔥 [추가됨] 관리자 페이지 진입 톱니바퀴 버튼 (우측 상단) */}
+      <button 
+        onClick={() => setIsAdminAuthOpen(true)}
+        className="absolute top-6 right-6 md:top-8 md:right-8 text-2xl opacity-30 hover:opacity-100 transition-opacity z-50 cursor-pointer"
+        title="운영진 페이지"
+      >
+        ⚙️
+      </button>
+
       <h1 className="text-3xl font-black text-center my-8 text-blue-900 tracking-tight">SNUMINTON</h1>
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
@@ -148,15 +238,11 @@ export default function Home() {
         />
       </div>
 
-      {/* --- ⬇️ 투표 및 특별행사 영역 --- */}
-      <div className="mt-12 mb-20 max-w-5xl mx-auto px-2 md:px-0">
+      <div className="mt-12 mb-10 max-w-5xl mx-auto px-2 md:px-0">
         <div className="flex items-center justify-between mb-4 px-1">
           <h2 className="text-lg font-black text-slate-800">📌 진행 중인 투표 및 행사</h2>
         </div>
-
         <div className="flex flex-col gap-3">
-          
-          {/* 🔥 1. 달력의 특별 일정들(레슨/총회 등) 리스트 렌더링 */}
           {specialEvents.map((ev, idx) => (
             <div key={`special-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
               <div>
@@ -182,7 +268,6 @@ export default function Home() {
             </div>
           ))}
 
-          {/* 🔥 2. DB에서 가져온 투표(Polls) 렌더링 (현재는 데이터가 없으면 안 보임) */}
           {polls.map((poll) => (
             <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
               <div>
@@ -192,7 +277,6 @@ export default function Home() {
                 <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
                 {poll.deadline && <p className="text-xs text-slate-500 mt-1">마감: {new Date(poll.deadline).toLocaleString()}</p>}
               </div>
-              
               <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
                 {poll.poll_type === 'text' ? (
                   <>
@@ -208,16 +292,153 @@ export default function Home() {
               </div>
             </div>
           ))}
-
         </div>
       </div>
 
-      {/* --- 모달(팝업) 영역 --- */}
+      {/* 출석 확인 플로팅 버튼 */}
+      <button 
+        onClick={() => setIsRankingModalOpen(true)}
+        className="fixed bottom-6 right-6 z-40 bg-slate-900 text-white px-6 py-3.5 rounded-full font-black text-sm shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all flex items-center gap-2 border border-slate-700"
+      >
+        출석 확인
+      </button>
+
+      {/* 출석 확인(랭킹) 모달 팝업 */}
+      {isRankingModalOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 md:p-6 transition-all"
+          onClick={() => setIsRankingModalOpen(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900 text-white p-5 md:p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
+                <button onClick={() => setRankingMonth(prev => prev === 1 ? 12 : prev - 1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">◀</button>
+                <h2 className="text-xl font-black tracking-tight">{rankingYear}년 {rankingMonth}월 상세 출석부</h2>
+                <button onClick={() => setRankingMonth(prev => prev === 12 ? 1 : prev + 1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">▶</button>
+              </div>
+              <p className="text-xs text-slate-300 bg-slate-800 px-3 py-1.5 rounded-full">
+                🟢 출석 | 🔺 지각 | ✕ 불참 | - 미신청
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto overflow-x-auto bg-slate-50 custom-scrollbar p-0">
+              <table className="w-full text-sm text-center min-w-[max-content] border-collapse">
+                <thead>
+                  <tr className="bg-white text-slate-500 font-bold border-b-2 border-slate-200">
+                    <th className="p-3 sticky left-0 bg-white z-10 w-12 border-r border-slate-100">순위</th>
+                    <th className="p-3 sticky left-12 bg-white z-10 w-24 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-100">이름</th>
+                    <th className="p-3 w-16 text-blue-600 bg-blue-50/30 border-r border-slate-100">총 횟수</th>
+                    
+                    {monthEventsList.map(ev => (
+                      <th key={ev.id} className="p-2 min-w-[45px] border-r border-slate-100 bg-white">
+                        <div className="flex flex-col items-center">
+                          <span className="text-[10px] text-slate-400 font-medium mb-0.5">
+                            {ev.type === 'normal' ? '정규' : ev.type === 'lesson' ? '레슨' : '행사'}
+                          </span>
+                          <span className="text-slate-800 font-black text-xs">{new Date(ev.start_at).getDate()}일</span>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {monthlyRanking.length === 0 ? (
+                    <tr>
+                      <td colSpan={100} className="p-10 text-center text-slate-400">등록된 부원이나 일정이 없습니다.</td>
+                    </tr>
+                  ) : (
+                    monthlyRanking.map((stat, idx) => (
+                      <tr key={stat.id} className="hover:bg-slate-50 transition-colors bg-white">
+                        <td className="p-3 text-slate-400 font-bold sticky left-0 bg-white/95 backdrop-blur-sm z-10 border-r border-slate-50">{idx + 1}</td>
+                        <td className="p-3 text-left font-bold text-slate-800 sticky left-12 bg-white/95 backdrop-blur-sm z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-50">
+                          {stat.name}
+                        </td>
+                        <td className="p-3 font-black text-blue-600 bg-blue-50/30 border-r border-slate-50">{stat.count}</td>
+                        
+                        {monthEventsList.map(ev => {
+                          const status = stat.attendanceRecord[ev.id];
+                          return (
+                            <td key={ev.id} className="p-2 border-r border-slate-50 text-base">
+                              {status === 'present' ? (
+                                <span title="출석">🟢</span>
+                              ) : status === 'late' ? (
+                                <span title="지각">🔺</span>
+                              ) : status === 'none' ? (
+                                <span className="text-red-300 font-bold text-xs" title="결석">✕</span>
+                              ) : (
+                                <span className="text-slate-200 font-light text-xs">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <button 
+              onClick={() => setIsRankingModalOpen(false)}
+              className="w-full py-5 bg-white text-slate-500 text-sm font-bold border-t border-slate-200 hover:text-slate-800 hover:bg-slate-50 transition-colors uppercase tracking-widest z-20"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 [추가됨] 운영진 로그인 모달 팝업 */}
+      {isAdminAuthOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
+          onClick={() => setIsAdminAuthOpen(false)}
+        >
+          <div 
+            className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-black text-xl text-slate-900 mb-2">👑 운영진 로그인</h3>
+            <p className="text-xs text-slate-500 mb-6">관리자 전용 페이지입니다. 비밀번호를 입력해주세요.</p>
+            
+            <input
+              type="password"
+              placeholder="비밀번호 4자리"
+              className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold tracking-widest text-center mb-6 transition-colors"
+              value={adminPwInput}
+              onChange={(e) => setAdminPwInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
+              autoFocus
+            />
+            
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setIsAdminAuthOpen(false)} 
+                className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                취소
+              </button>
+              <button 
+                onClick={handleAdminLogin} 
+                className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30"
+              >
+                입장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 기존 일정 상세/신청 모달 */}
       {isModalOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center z-[100] p-0 md:p-6 transition-all"
           onClick={resetAndCloseModal}
         >
+          {/* ... (기존 신청 모달 내용과 동일) ... */}
           <div 
             className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200"
             onClick={(e) => e.stopPropagation()}
@@ -234,7 +455,6 @@ export default function Home() {
 
             <div className="flex flex-col md:flex-row overflow-hidden flex-1 min-h-0">
               
-              {/* [왼쪽 섹션: 일정 정보 및 입력] */}
               <div className={`flex-1 p-8 md:p-12 overflow-y-auto custom-scrollbar ${activeTab === 'info' ? 'block' : 'hidden md:block'}`}>
                 <div className="mb-8">
                   <div className="flex items-center gap-2 mb-3">
@@ -293,7 +513,6 @@ export default function Home() {
                     />
                   )}
 
-                  {/* 부분참 여부 (정기운동) */}
                   {selectedEvent?.type === 'normal' && (
                     <div className="space-y-2 pt-2">
                       <label className="block text-xs font-bold text-slate-400 ml-1 uppercase">Participation Type</label>
@@ -305,7 +524,6 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* 🔥 레슨 요일 선택창 (레슨일 때만 노출) */}
                   {selectedEvent?.type === 'lesson' && (
                     <div className="space-y-2 pt-2">
                       <label className="block text-xs font-bold text-slate-400 ml-1">레슨 요일 선택</label>
@@ -316,7 +534,6 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* 🔥 뒷풀이 참석 여부 (has_afterparty가 true일 때만 노출) */}
                   {selectedEvent?.has_afterparty && (
                     <div className="space-y-2 pt-2">
                       <label className="block text-xs font-bold text-slate-400 ml-1">뒷풀이 참석 여부 (필수)</label>
@@ -337,7 +554,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* [오른쪽 섹션: 실시간 명단] */}
               <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-xl font-black text-slate-900">신청 현황</h3>
@@ -380,7 +596,6 @@ export default function Home() {
                               <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type}</span>
                               {isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">대기 {waitlistNumber}</span>}
                               
-                              {/* 🔥 명단에 레슨 정보 및 뒷풀이 참석 여부 배지 추가 표시 */}
                               {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">화/목</span>}
                               {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">토요</span>}
                               {app.afterparty_join && <span className="text-[10px]">🍻</span>}
