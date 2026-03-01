@@ -228,7 +228,6 @@ export default function Home() {
 
   const status = getButtonStatus();
 
-  // 🔥 누락되었던 엔터키 감지 함수 복구!
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleApply();
@@ -240,22 +239,68 @@ export default function Home() {
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
+    // 최종적으로 DB에 저장될 이름 (기본값은 유저 입력값)
+    let finalUserName = userName; 
+
     if (userType === "member" || userType === "ob") {
-      const { data: memberData } = await supabase.from("members").select("id").eq("name", userName).eq("user_type", userType).single();
-      if (!memberData) return alert(t.alertNotRegistered);
+      // 1. 해당 타입의 모든 부원 명단 가져오기
+      const { data: membersList } = await supabase
+        .from("members")
+        .select("id, name")
+        .eq("user_type", userType);
+
+      if (!membersList) return alert(t.alertNotRegistered);
+
+      // 입력값을 소문자로 만들고 양옆 공백 제거
+      const input = userName.trim().toLowerCase();
+
+      // 2. 스마트 검색 알고리즘
+      const matchedMember = membersList.find(m => {
+        const dbName = m.name.trim().toLowerCase();
+        
+        // 조건 A: 완벽 일치 (대소문자만 다를 때 -> 예: RAHUL KUMAR)
+        if (dbName === input) return true;
+        
+        // 조건 B: 이름에 영어가 포함되어 있을 때만 추가 검사 발동
+        if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
+          const dbParts = dbName.split(/\s+/);
+          const inputParts = input.split(/\s+/);
+          
+          // 1) 순서가 바뀐 경우 (예: Kumar Rahul === Rahul Kumar)
+          if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
+          
+          // 2) 이름의 일부만 친 경우 (예: rahul 입력 -> rahul kumar 통과)
+          if (dbParts.includes(input)) return true;
+          
+          // 3) 이니셜만 친 경우 (예: rk 입력 -> rahul kumar 통과)
+          const initials = dbParts.map((p:string) => p[0]).join('');
+          if (initials === input) return true;
+        }
+        
+        return false;
+      });
+
+      if (!matchedMember) {
+        return alert(t.alertNotRegistered);
+      }
+      
+      finalUserName = matchedMember.name; 
     }
 
     const { error } = await supabase.from("applications").insert([{
-      event_id: selectedEvent.id, user_name: userName, user_type: userType,
+      event_id: selectedEvent.id, 
+      user_name: finalUserName, // 교정된 이름으로 전송
+      user_type: userType,
       guest_password: userType === "guest" ? guestPw : null,
       participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
       lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
       afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
     }]);
 
-    if (error) { alert(t.alertError + error.message); } 
-    else {
-      alert(`${userName}${t.alertSuccess}`);
+    if (error) { 
+      alert(t.alertError + error.message); 
+    } else {
+      alert(`${finalUserName}${t.alertSuccess}`); // 팝업에도 교정된 예쁜 이름으로 뜸!
       setUserName(""); setGuestPw(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); setActiveTab("list"); 
