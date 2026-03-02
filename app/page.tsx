@@ -23,6 +23,9 @@ const dict = {
     absent: "불참",
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
+    attendanceAuthTitle: "🔒 부원 인증",
+    attendanceAuthDesc: "출석부를 보려면 등록된 부원 이름을 입력해주세요.",
+    attendanceAuthPlaceholder: "내 이름 입력",
     close: "닫기 Window", // 닫기 텍스트 수정
     noMembers: "등록된 부원이나 일정이 없습니다.",
     rank: "순위",
@@ -80,6 +83,9 @@ const dict = {
     absent: "Absent",
     checkAttendance: "Check Attendance",
     attendanceTitle: "Detailed Attendance",
+    attendanceAuthTitle: "🔒 Member Verification",
+    attendanceAuthDesc: "Please enter your registered name to view the attendance list.",
+    attendanceAuthPlaceholder: "Enter your name",
     close: "Close Window",
     noMembers: "No registered members or events.",
     rank: "Rank",
@@ -152,6 +158,10 @@ export default function Home() {
 
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState("");
+
+  // 🔥 새로 추가된 출석부 이름 인증 관련 상태
+  const [isAttendanceAuthOpen, setIsAttendanceAuthOpen] = useState(false);
+  const [attendanceAuthName, setAttendanceAuthName] = useState("");
 
   useEffect(() => { fetchEvents(); fetchPolls(); }, []);
 
@@ -234,6 +244,43 @@ export default function Home() {
     }
   };
 
+  // 🔥 매번 인증하도록 수정한 출석부 이름 인증 로직
+  const handleAttendanceAuth = async () => {
+    if (!attendanceAuthName) return alert(t.alertName);
+
+    const { data: membersList } = await supabase
+      .from("members")
+      .select("id, name")
+      .in("user_type", ["member", "ob"]);
+
+    if (!membersList) return alert(t.alertNotRegistered);
+
+    const input = attendanceAuthName.trim().toLowerCase();
+
+    const matchedMember = membersList.find(m => {
+      const dbName = m.name.trim().toLowerCase();
+      if (dbName === input) return true;
+      if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
+        const dbParts = dbName.split(/\s+/);
+        const inputParts = input.split(/\s+/);
+        if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
+        if (dbParts.includes(input)) return true;
+        const initials = dbParts.map((p:string) => p[0]).join('');
+        if (initials === input) return true;
+      }
+      return false;
+    });
+
+    if (matchedMember) {
+      // 인증 성공! 바로 출석부 열어주기 (localStorage 기억 기능 제거됨)
+      setIsAttendanceAuthOpen(false);
+      setAttendanceAuthName("");
+      setIsRankingModalOpen(true);
+    } else {
+      alert(t.alertNotRegistered);
+    }
+  };
+
   const handleApply = async () => {
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
@@ -242,8 +289,8 @@ export default function Home() {
     // 최종적으로 DB에 저장될 이름 (기본값은 유저 입력값)
     let finalUserName = userName; 
 
-    if (userType === "member" || userType === "ob") {
-      // 1. 해당 타입의 모든 부원 명단 가져오기
+    // 🔥 OB는 제외! 오직 'member(일반 부원)'일 때만 엄격한 명단 검사 실행
+    if (userType === "member") {
       const { data: membersList } = await supabase
         .from("members")
         .select("id, name")
@@ -251,28 +298,19 @@ export default function Home() {
 
       if (!membersList) return alert(t.alertNotRegistered);
 
-      // 입력값을 소문자로 만들고 양옆 공백 제거
       const input = userName.trim().toLowerCase();
 
-      // 2. 스마트 검색 알고리즘
       const matchedMember = membersList.find(m => {
         const dbName = m.name.trim().toLowerCase();
         
-        // 조건 A: 완벽 일치 (대소문자만 다를 때 -> 예: RAHUL KUMAR)
         if (dbName === input) return true;
         
-        // 조건 B: 이름에 영어가 포함되어 있을 때만 추가 검사 발동
         if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
           const dbParts = dbName.split(/\s+/);
           const inputParts = input.split(/\s+/);
           
-          // 1) 순서가 바뀐 경우 (예: Kumar Rahul === Rahul Kumar)
           if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
-          
-          // 2) 이름의 일부만 친 경우 (예: rahul 입력 -> rahul kumar 통과)
           if (dbParts.includes(input)) return true;
-          
-          // 3) 이니셜만 친 경우 (예: rk 입력 -> rahul kumar 통과)
           const initials = dbParts.map((p:string) => p[0]).join('');
           if (initials === input) return true;
         }
@@ -289,7 +327,7 @@ export default function Home() {
 
     const { error } = await supabase.from("applications").insert([{
       event_id: selectedEvent.id, 
-      user_name: finalUserName, // 교정된 이름으로 전송
+      user_name: finalUserName, 
       user_type: userType,
       guest_password: userType === "guest" ? guestPw : null,
       participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
@@ -300,7 +338,7 @@ export default function Home() {
     if (error) { 
       alert(t.alertError + error.message); 
     } else {
-      alert(`${finalUserName}${t.alertSuccess}`); // 팝업에도 교정된 예쁜 이름으로 뜸!
+      alert(`${finalUserName}${t.alertSuccess}`);
       setUserName(""); setGuestPw(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); setActiveTab("list"); 
@@ -409,12 +447,32 @@ export default function Home() {
         </div>
       </div>
 
+      {/* 🔥 누를 때마다 무조건 팝업 띄우도록 원상복구 */}
       <button 
-        onClick={() => setIsRankingModalOpen(true)} 
+        onClick={() => setIsAttendanceAuthOpen(true)} 
         className="fixed bottom-6 right-6 z-40 bg-slate-900 text-white px-6 py-3.5 rounded-full font-black text-sm shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all flex items-center gap-2 border border-slate-700"
       >
         {t.checkAttendance}
       </button>
+
+      {/* 출석부 부원 인증 팝업 */}
+      {isAttendanceAuthOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4" onClick={() => setIsAttendanceAuthOpen(false)}>
+          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <h3 className="font-black text-xl text-slate-900 mb-2">{t.attendanceAuthTitle}</h3>
+            <p className="text-xs text-slate-500 mb-6">{t.attendanceAuthDesc}</p>
+            <input 
+              type="text" placeholder={t.attendanceAuthPlaceholder} 
+              className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold text-center mb-6 transition-colors" 
+              value={attendanceAuthName} onChange={e => setAttendanceAuthName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAttendanceAuth()} autoFocus 
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setIsAttendanceAuthOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
+              <button onClick={handleAttendanceAuth} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">{t.enter}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 출석 확인(랭킹) 모달 팝업 */}
       {isRankingModalOpen && (
