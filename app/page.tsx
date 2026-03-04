@@ -24,9 +24,9 @@ const dict = {
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
-    attendanceAuthDesc: "출석부를 보려면 등록된 부원 이름을 입력해주세요.",
+    attendanceAuthDesc: "출석부를 보려면 등록된 부원/OB 이름을 한 번 입력해주세요. (이후 자동 접속)",
     attendanceAuthPlaceholder: "내 이름 입력",
-    close: "닫기 Window", // 닫기 텍스트 수정
+    close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
     rank: "순위",
     name: "이름",
@@ -67,6 +67,8 @@ const dict = {
     alertSuccess: "님, 신청이 완료되었습니다! 🏸",
     alertError: "신청 중 오류가 발생했습니다: ",
     alertAdminFail: "비밀번호가 일치하지 않습니다.",
+    participatingExecs: "참여 임원진",
+    noEvents: "진행 중인 투표 및 행사가 없습니다.", // 🔥 빈 상태 문구 추가
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -127,6 +129,8 @@ const dict = {
     alertSuccess: ", your application is complete! 🏸",
     alertError: "Error occurred during application: ",
     alertAdminFail: "Incorrect password.",
+    participatingExecs: "Participating Executives",
+    noEvents: "There are no ongoing polls or events.", // 🔥 빈 상태 문구 추가
   }
 };
 
@@ -159,11 +163,19 @@ export default function Home() {
   const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState("");
 
-  // 🔥 새로 추가된 출석부 이름 인증 관련 상태
   const [isAttendanceAuthOpen, setIsAttendanceAuthOpen] = useState(false);
   const [attendanceAuthName, setAttendanceAuthName] = useState("");
+  const [isAttendanceAuthenticated, setIsAttendanceAuthenticated] = useState(false);
 
-  useEffect(() => { fetchEvents(); fetchPolls(); }, []);
+  const [executives, setExecutives] = useState<any[]>([]);
+
+  useEffect(() => {
+    const isAuth = localStorage.getItem("snuminton_attendance_auth");
+    if (isAuth === "true") setIsAttendanceAuthenticated(true);
+    fetchEvents(); 
+    fetchPolls(); 
+    fetchExecutives(); 
+  }, []);
 
   useEffect(() => { if (isRankingModalOpen) fetchRanking(); }, [isRankingModalOpen, rankingMonth, rankingYear]);
 
@@ -175,6 +187,11 @@ export default function Home() {
   const fetchPolls = async () => {
     const { data } = await supabase.from("polls").select("*").order("created_at", { ascending: false });
     if (data) setPolls(data);
+  };
+
+  const fetchExecutives = async () => {
+    const { data } = await supabase.from("members").select("name, user_type").in("user_type", ["회장", "부회장", "임원진"]);
+    if (data) setExecutives(data);
   };
 
   const fetchApplicants = async (eventId: string) => {
@@ -239,24 +256,14 @@ export default function Home() {
   const status = getButtonStatus();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleApply();
-    }
+    if (e.key === 'Enter') handleApply();
   };
 
-  // 🔥 매번 인증하도록 수정한 출석부 이름 인증 로직
   const handleAttendanceAuth = async () => {
     if (!attendanceAuthName) return alert(t.alertName);
-
-    const { data: membersList } = await supabase
-      .from("members")
-      .select("id, name")
-      .in("user_type", ["member", "ob"]);
-
+    const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
     if (!membersList) return alert(t.alertNotRegistered);
-
     const input = attendanceAuthName.trim().toLowerCase();
-
     const matchedMember = membersList.find(m => {
       const dbName = m.name.trim().toLowerCase();
       if (dbName === input) return true;
@@ -272,13 +279,12 @@ export default function Home() {
     });
 
     if (matchedMember) {
-      // 인증 성공! 바로 출석부 열어주기 (localStorage 기억 기능 제거됨)
+      localStorage.setItem("snuminton_attendance_auth", "true");
+      setIsAttendanceAuthenticated(true);
       setIsAttendanceAuthOpen(false);
       setAttendanceAuthName("");
       setIsRankingModalOpen(true);
-    } else {
-      alert(t.alertNotRegistered);
-    }
+    } else alert(t.alertNotRegistered);
   };
 
   const handleApply = async () => {
@@ -286,42 +292,26 @@ export default function Home() {
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
-    // 최종적으로 DB에 저장될 이름 (기본값은 유저 입력값)
     let finalUserName = userName; 
 
-    // 🔥 OB는 제외! 오직 'member(일반 부원)'일 때만 엄격한 명단 검사 실행
     if (userType === "member") {
-      const { data: membersList } = await supabase
-        .from("members")
-        .select("id, name")
-        .eq("user_type", userType);
-
+      const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "회장", "부회장", "임원진"]);
       if (!membersList) return alert(t.alertNotRegistered);
-
       const input = userName.trim().toLowerCase();
-
       const matchedMember = membersList.find(m => {
         const dbName = m.name.trim().toLowerCase();
-        
         if (dbName === input) return true;
-        
         if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
           const dbParts = dbName.split(/\s+/);
           const inputParts = input.split(/\s+/);
-          
           if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
           if (dbParts.includes(input)) return true;
           const initials = dbParts.map((p:string) => p[0]).join('');
           if (initials === input) return true;
         }
-        
         return false;
       });
-
-      if (!matchedMember) {
-        return alert(t.alertNotRegistered);
-      }
-      
+      if (!matchedMember) return alert(t.alertNotRegistered);
       finalUserName = matchedMember.name; 
     }
 
@@ -335,10 +325,9 @@ export default function Home() {
       afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
     }]);
 
-    if (error) { 
-      alert(t.alertError + error.message); 
-    } else {
-      alert(`${finalUserName}${t.alertSuccess}`);
+    if (error) alert(t.alertError + error.message); 
+    else {
+      alert(`${finalUserName}${t.alertSuccess}`); 
       setUserName(""); setGuestPw(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); setActiveTab("list"); 
@@ -358,123 +347,87 @@ export default function Home() {
   };
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal');
+  const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
 
+  // 🔥 메인 컨테이너에 flex flex-col 설정하여 footer가 하단으로 밀리게 함
   return (
-    <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative pb-24">
+    <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative flex flex-col">
       
       <div className="absolute top-6 right-6 md:top-8 md:right-8 flex gap-3 z-50">
-        <button 
-          onClick={() => setLang(lang === "ko" ? "en" : "ko")}
-          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-full transition-colors shadow-sm"
-        >
+        <button onClick={() => setLang(lang === "ko" ? "en" : "ko")} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-full transition-colors shadow-sm">
           {lang === "ko" ? "🌐 EN" : "🌐 KO"}
         </button>
-        <button 
-          onClick={() => setIsAdminAuthOpen(true)}
-          className="text-2xl opacity-30 hover:opacity-100 transition-opacity cursor-pointer" title="Admin"
-        >
-          ⚙️
-        </button>
+        <button onClick={() => setIsAdminAuthOpen(true)} className="text-2xl opacity-30 hover:opacity-100 transition-opacity cursor-pointer" title="Admin">⚙️</button>
       </div>
 
       <h1 className="text-3xl font-black text-center my-8 text-blue-900 tracking-tight">SNUMINTON</h1>
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
-        <FullCalendar
-          plugins={[dayGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          events={events}
-          height="auto"
-          locale={lang === "ko" ? "ko" : "en"}
-          displayEventTime={false}
-          eventClick={(info) => {
-            const ev = info.event;
-            setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps });
-            fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true);
-          }}
-        />
+        <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale={lang === "ko" ? "ko" : "en"} displayEventTime={false} eventClick={(info) => { const ev = info.event; setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }} />
       </div>
 
-      <div className="mt-12 mb-10 max-w-5xl mx-auto px-2 md:px-0">
-        <div className="flex items-center justify-between mb-4 px-1">
-          <h2 className="text-lg font-black text-slate-800">{t.ongoing}</h2>
-        </div>
-        <div className="flex flex-col gap-3">
-          {specialEvents.map((ev, idx) => (
-            <div key={`special-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
-              <div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                  {ev.extendedProps.type === 'lesson' ? t.lesson : t.special}
-                </span>
-                <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  {t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })}
-                </p>
-              </div>
-              <button 
-                onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }}
-                className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0"
-              >
-                {t.applyView}
-              </button>
-            </div>
-          ))}
+      {/* 🔥 투표/행사 섹션 영역 (여백 확대 및 빈 상태 추가) */}
+      <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
+        <div className="flex items-center justify-between mb-4 px-1"><h2 className="text-lg font-black text-slate-800">{t.ongoing}</h2></div>
+        
+        {/* 최소 높이를 줘서 휑해 보이지 않게 함 */}
+        <div className="flex flex-col gap-3 min-h-[250px]">
+          {hasOngoingItems ? (
+            <>
+              {specialEvents.map((ev, idx) => (
+                <div key={`special-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
+                  <div>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
+                    <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })}</p>
+                  </div>
+                  <button onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0">{t.applyView}</button>
+                </div>
+              ))}
 
-          {polls.map((poll) => (
-            <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
-              <div>
-                <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">
-                  {poll.poll_type === 'text' ? t.suggestion : t.poll}
-                </span>
-                <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
-                {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
-              </div>
-              <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
-                {poll.poll_type === 'text' ? (
-                  <>
-                    <input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" />
-                    <button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button>
-                  </>
-                ) : (
-                  <>
-                    <button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button>
-                    <button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button>
-                  </>
-                )}
-              </div>
+              {polls.map((poll) => (
+                <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
+                  <div>
+                    <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
+                    <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
+                    {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
+                  </div>
+                  <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
+                    {poll.poll_type === 'text' ? (
+                      <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
+                    ) : (
+                      <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : (
+            /* 🔥 투표나 행사가 없을 때 띄워줄 안내 컴포넌트 */
+            <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
+              <span className="text-2xl mb-3 opacity-60">🍃</span>
+              <p className="text-sm font-bold">{t.noEvents}</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* 🔥 누를 때마다 무조건 팝업 띄우도록 원상복구 */}
-      <button 
-        onClick={() => setIsAttendanceAuthOpen(true)} 
-        className="fixed bottom-6 right-6 z-40 bg-slate-900 text-white px-6 py-3.5 rounded-full font-black text-sm shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all flex items-center gap-2 border border-slate-700"
-      >
+      {/* 출석 확인 버튼 */}
+      <button onClick={() => { if (isAttendanceAuthenticated) { setIsRankingModalOpen(true); } else { setIsAttendanceAuthOpen(true); } }} className="fixed bottom-6 right-6 z-40 bg-slate-900 text-white px-6 py-3.5 rounded-full font-black text-sm shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all flex items-center gap-2 border border-slate-700">
         {t.checkAttendance}
       </button>
 
-      {/* 출석부 부원 인증 팝업 */}
+      {/* 팝업 모달들 */}
       {isAttendanceAuthOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4" onClick={() => setIsAttendanceAuthOpen(false)}>
           <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-            <h3 className="font-black text-xl text-slate-900 mb-2">{t.attendanceAuthTitle}</h3>
-            <p className="text-xs text-slate-500 mb-6">{t.attendanceAuthDesc}</p>
-            <input 
-              type="text" placeholder={t.attendanceAuthPlaceholder} 
-              className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold text-center mb-6 transition-colors" 
-              value={attendanceAuthName} onChange={e => setAttendanceAuthName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAttendanceAuth()} autoFocus 
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setIsAttendanceAuthOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
-              <button onClick={handleAttendanceAuth} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">{t.enter}</button>
-            </div>
+            <h3 className="font-black text-xl text-slate-900 mb-2">{t.attendanceAuthTitle}</h3><p className="text-xs text-slate-500 mb-6">{t.attendanceAuthDesc}</p>
+            <input type="text" placeholder={t.attendanceAuthPlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold text-center mb-6 transition-colors" value={attendanceAuthName} onChange={e => setAttendanceAuthName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAttendanceAuth()} autoFocus />
+            <div className="flex gap-2"><button onClick={() => setIsAttendanceAuthOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button><button onClick={handleAttendanceAuth} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">{t.enter}</button></div>
           </div>
         </div>
       )}
 
-      {/* 출석 확인(랭킹) 모달 팝업 */}
       {isRankingModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 md:p-6 transition-all" onClick={() => setIsRankingModalOpen(false)}>
           <div className="bg-white w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
@@ -489,15 +442,10 @@ export default function Home() {
               <table className="w-full text-xs md:text-sm text-center min-w-max border-collapse">
                 <thead>
                   <tr className="bg-white text-slate-500 font-bold border-b-2 border-slate-200">
-                    <th className="p-2 md:p-3 sticky left-0 bg-white z-10 w-8 md:w-12 border-r border-slate-100">{t.rank}</th>
-                    <th className="p-2 md:p-3 sticky left-8 md:left-12 bg-white z-10 w-16 md:w-24 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-100">{t.name}</th>
-                    <th className="p-2 md:p-3 w-12 md:w-16 text-blue-600 bg-blue-50/30 border-r border-slate-100">{t.total}</th>
+                    <th className="p-2 md:p-3 sticky left-0 bg-white z-10 w-8 md:w-12 border-r border-slate-100">{t.rank}</th><th className="p-2 md:p-3 sticky left-8 md:left-12 bg-white z-10 w-16 md:w-24 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-100">{t.name}</th><th className="p-2 md:p-3 w-12 md:w-16 text-blue-600 bg-blue-50/30 border-r border-slate-100">{t.total}</th>
                     {monthEventsList.map(ev => (
                       <th key={ev.id} className="p-1 md:p-2 min-w-[36px] md:min-w-[45px] border-r border-slate-100 bg-white">
-                        <div className="flex flex-col items-center">
-                          <span className="text-[8px] md:text-[10px] text-slate-400 font-medium mb-0.5">{ev.type === 'normal' ? t.regular : ev.type === 'lesson' ? t.lesson : t.special}</span>
-                          <span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}</span>
-                        </div>
+                        <div className="flex flex-col items-center"><span className="text-[8px] md:text-[10px] text-slate-400 font-medium mb-0.5">{ev.type === 'normal' ? t.regular : ev.type === 'lesson' ? t.lesson : t.special}</span><span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}</span></div>
                       </th>
                     ))}
                   </tr>
@@ -505,9 +453,7 @@ export default function Home() {
                 <tbody className="divide-y divide-slate-100">
                   {monthlyRanking.length === 0 ? <tr><td colSpan={100} className="p-10 text-center text-slate-400">{t.noMembers}</td></tr> : monthlyRanking.map((stat, idx) => (
                     <tr key={stat.id} className="hover:bg-slate-50 transition-colors bg-white">
-                      <td className="p-2 md:p-3 text-slate-400 font-bold sticky left-0 bg-white/95 backdrop-blur-sm z-10 border-r border-slate-50">{idx + 1}</td>
-                      <td className="p-2 md:p-3 text-left font-bold text-slate-800 sticky left-8 md:left-12 bg-white/95 backdrop-blur-sm z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-50 max-w-[4rem] md:max-w-none truncate">{stat.name}</td>
-                      <td className="p-2 md:p-3 font-black text-blue-600 bg-blue-50/30 border-r border-slate-50">{stat.count}</td>
+                      <td className="p-2 md:p-3 text-slate-400 font-bold sticky left-0 bg-white/95 backdrop-blur-sm z-10 border-r border-slate-50">{idx + 1}</td><td className="p-2 md:p-3 text-left font-bold text-slate-800 sticky left-8 md:left-12 bg-white/95 backdrop-blur-sm z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-50 max-w-[4rem] md:max-w-none truncate">{stat.name}</td><td className="p-2 md:p-3 font-black text-blue-600 bg-blue-50/30 border-r border-slate-50">{stat.count}</td>
                       {monthEventsList.map(ev => {
                         const status = stat.attendanceRecord[ev.id];
                         return <td key={ev.id} className="p-1.5 md:p-2 border-r border-slate-50 text-base">{status === 'present' ? <span title="출석">🟢</span> : status === 'late' ? <span title="지각">🔺</span> : status === 'none' ? <span className="text-red-300 font-bold text-[10px] md:text-xs" title="결석">✕</span> : <span className="text-slate-200 font-light text-[10px] md:text-xs">-</span>}</td>;
@@ -522,7 +468,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 일정 상세/신청 모달 */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center z-[100] p-0 md:p-6 transition-all" onClick={resetAndCloseModal}>
           <div className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
@@ -542,34 +487,50 @@ export default function Home() {
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📍</span>{selectedEvent?.location || t.unspecified}</div>
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
                   </div>
+
+                  {selectedEvent?.participating_execs && selectedEvent.participating_execs.length > 0 && (
+                    <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                      <h4 className="text-[11px] font-bold text-slate-500 mb-2.5 uppercase tracking-wide">👑 {t.participatingExecs}</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {[...selectedEvent.participating_execs].sort((a, b) => {
+                          const roleA = executives.find(e => e.name === a)?.user_type || '임원진';
+                          const roleB = executives.find(e => e.name === b)?.user_type || '임원진';
+                          const roleOrder: Record<string, number> = { '회장': 1, '부회장': 2, '임원진': 3 };
+                          return (roleOrder[roleA] || 4) - (roleOrder[roleB] || 4);
+                        }).map((execName: string) => {
+                          const execInfo = executives.find(e => e.name === execName);
+                          const role = execInfo ? execInfo.user_type : '임원진';
+                          
+                          let containerStyle = "bg-slate-100 text-slate-700 border-slate-300 shadow-sm"; 
+                          if (role === '회장') containerStyle = "bg-blue-600 text-white shadow-sm border-transparent";
+                          else if (role === '부회장') containerStyle = "bg-sky-100 text-sky-800 border-sky-200";
+
+                          return (
+                            <div key={execName} className={`flex items-center justify-center px-3.5 py-1.5 rounded-xl border text-xs font-black tracking-wide ${containerStyle}`}>
+                              {execName}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4 pt-8 border-t border-slate-100">
                   <div className="group">
                     <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.appName}</label>
-                    <input 
-                      type="text" placeholder={t.namePlaceholder} 
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold"
-                      value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown}
-                    />
+                    <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                       <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
-                      <select 
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none"
-                        value={userType} onChange={(e) => setUserType(e.target.value)}
-                      >
+                      <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)}>
                         <option value="member">{t.member}</option><option value="ob">{t.ob}</option><option value="guest">{t.guest}</option>
                       </select>
                     </div>
                   </div>
                   {userType === "guest" && (
-                    <input 
-                      type="password" placeholder={t.guestPw} 
-                      className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" 
-                      value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)}
-                    />
+                    <input type="password" placeholder={t.guestPw} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
                   )}
                   {selectedEvent?.type === 'normal' && (
                     <div className="space-y-2 pt-2">
@@ -599,11 +560,7 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  <button 
-                    disabled={status.disabled} 
-                    onClick={handleApply}
-                    className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}
-                  >
+                  <button disabled={status.disabled} onClick={handleApply} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
                     {status.text}
                   </button>
                 </div>
@@ -616,9 +573,7 @@ export default function Home() {
                 </div>
                 <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar min-h-0">
                 {applicants.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10">
-                    <p className="text-[11px] font-medium">{t.noApplicants}</p>
-                  </div>
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-[11px] font-medium">{t.noApplicants}</p></div>
                 ) : (
                   <div className="divide-y divide-white/50 border-t border-slate-100">
                     {applicants.map((app, i) => {
@@ -635,7 +590,7 @@ export default function Home() {
                             <span className="text-[10px] font-black opacity-30 w-4 flex-shrink-0">{String(i + 1).padStart(2, '0')}</span>
                             <div className="flex items-center gap-1.5 min-w-0 truncate">
                               <span className="font-bold text-slate-800 text-[12px] truncate leading-none">{app.user_name}</span>
-                              <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
+                              <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' || app.user_type === '회장' || app.user_type === '부회장' || app.user_type === '임원진' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
                               {isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">{t.waitlist} {waitlistNumber}</span>}
                               {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
                               {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
@@ -649,12 +604,8 @@ export default function Home() {
                               </span>
                             )}
                             <div className="flex items-baseline gap-1 tabular-nums">
-                              <span className="text-[9px] font-medium text-slate-400">
-                                {new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}
-                              </span>
-                              <span className="text-[10px] font-bold text-slate-500">
-                                {new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                              </span>
+                              <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
+                              <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                             </div>
                           </div>
                         </div>
@@ -670,17 +621,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* 운영진 로그인 모달 */}
       {isAdminAuthOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4" onClick={() => setIsAdminAuthOpen(false)}>
           <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <h3 className="font-black text-xl text-slate-900 mb-2">{t.adminLogin}</h3>
             <p className="text-xs text-slate-500 mb-6">{t.adminDesc}</p>
-            <input 
-              type="password" placeholder={t.pwPlaceholder} 
-              className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold tracking-widest text-center mb-6 transition-colors" 
-              value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} autoFocus 
-            />
+            <input type="password" placeholder={t.pwPlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold tracking-widest text-center mb-6 transition-colors" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} autoFocus />
             <div className="flex gap-2">
               <button onClick={() => setIsAdminAuthOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
               <button onClick={handleAdminLogin} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">{t.enter}</button>
@@ -688,6 +634,10 @@ export default function Home() {
           </div>
         </div>
       )}
+      <footer className="mt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
+        <p>SNUMINTON © 2026 | Developed by 이주원</p>
+        
+      </footer>
     </main>
   );
 }
