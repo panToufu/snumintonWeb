@@ -659,10 +659,7 @@ export default function Home() {
       )}
 
       <footer className="mt-auto pt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
-        <p>© 2026 SNUMINTON. All rights reserved.</p>
-        <p className="mt-1">
-          Developed by <a href="https://github.com/본인깃허브" target="_blank" rel="noopener noreferrer" className="font-bold text-slate-500 hover:text-blue-500 transition-colors">본인 이름</a>
-        </p>
+        <p>© 2026 SNUMINTON. | Developed by 이주원</p>
       </footer>
 
     </main>
