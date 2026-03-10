@@ -67,8 +67,8 @@ const dict = {
     alertSuccess: "님, 신청이 완료되었습니다! 🏸",
     alertError: "신청 중 오류가 발생했습니다: ",
     alertAdminFail: "비밀번호가 일치하지 않습니다.",
-    participatingExecs: "참여 임원진",
-    noEvents: "진행 중인 투표 및 행사가 없습니다.", // 🔥 빈 상태 문구 추가
+    participatingExecs: "오늘 참여하는 운영진",
+    noEvents: "진행 중인 투표 및 행사가 없습니다.",
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -130,7 +130,7 @@ const dict = {
     alertError: "Error occurred during application: ",
     alertAdminFail: "Incorrect password.",
     participatingExecs: "Participating Executives",
-    noEvents: "There are no ongoing polls or events.", // 🔥 빈 상태 문구 추가
+    noEvents: "There are no ongoing polls or events.",
   }
 };
 
@@ -349,7 +349,6 @@ export default function Home() {
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal');
   const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
 
-  // 🔥 메인 컨테이너에 flex flex-col 설정하여 footer가 하단으로 밀리게 함
   return (
     <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative flex flex-col">
       
@@ -366,11 +365,9 @@ export default function Home() {
         <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale={lang === "ko" ? "ko" : "en"} displayEventTime={false} eventClick={(info) => { const ev = info.event; setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }} />
       </div>
 
-      {/* 🔥 투표/행사 섹션 영역 (여백 확대 및 빈 상태 추가) */}
       <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
         <div className="flex items-center justify-between mb-4 px-1"><h2 className="text-lg font-black text-slate-800">{t.ongoing}</h2></div>
         
-        {/* 최소 높이를 줘서 휑해 보이지 않게 함 */}
         <div className="flex flex-col gap-3 min-h-[250px]">
           {hasOngoingItems ? (
             <>
@@ -403,7 +400,6 @@ export default function Home() {
               ))}
             </>
           ) : (
-            /* 🔥 투표나 행사가 없을 때 띄워줄 안내 컴포넌트 */
             <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
               <span className="text-2xl mb-3 opacity-60">🍃</span>
               <p className="text-sm font-bold">{t.noEvents}</p>
@@ -412,12 +408,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 출석 확인 버튼 */}
       <button onClick={() => { if (isAttendanceAuthenticated) { setIsRankingModalOpen(true); } else { setIsAttendanceAuthOpen(true); } }} className="fixed bottom-6 right-6 z-40 bg-slate-900 text-white px-6 py-3.5 rounded-full font-black text-sm shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all flex items-center gap-2 border border-slate-700">
         {t.checkAttendance}
       </button>
 
-      {/* 팝업 모달들 */}
       {isAttendanceAuthOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4" onClick={() => setIsAttendanceAuthOpen(false)}>
           <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -473,7 +467,8 @@ export default function Home() {
           <div className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex md:hidden border-b border-slate-100 bg-slate-50/50">
               <button onClick={() => setActiveTab("info")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "info" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.infoTab}</button>
-              <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.length}</span></button>
+              {/* 🔥 모바일 탭 정원 표시에도 OB 인원 제외 적용 */}
+              <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.filter(a => a.user_type !== 'ob').length}</span></button>
             </div>
             <div className="flex flex-col md:flex-row overflow-hidden flex-1 min-h-0">
               <div className={`flex-1 p-8 md:p-12 overflow-y-auto custom-scrollbar ${activeTab === 'info' ? 'block' : 'hidden md:block'}`}>
@@ -569,48 +564,76 @@ export default function Home() {
               <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-xl font-black text-slate-900">{t.listTab}</h3>
-                  <span className="bg-white px-3 py-1 rounded-full text-blue-600 text-xs font-black shadow-sm border border-slate-200">{applicants.length} / {selectedEvent?.max_capacity}</span>
+                  {/* 🔥 정원 카운트에서 OB 인원 제외 적용 */}
+                  <span className="bg-white px-3 py-1 rounded-full text-blue-600 text-xs font-black shadow-sm border border-slate-200">
+                    {applicants.filter(a => a.user_type !== 'ob').length} / {selectedEvent?.max_capacity}
+                  </span>
                 </div>
                 <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar min-h-0">
                 {applicants.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-[11px] font-medium">{t.noApplicants}</p></div>
                 ) : (
                   <div className="divide-y divide-white/50 border-t border-slate-100">
-                    {applicants.map((app, i) => {
-                      const isWaitlisted = selectedEvent?.max_capacity && i >= selectedEvent.max_capacity;
-                      const waitlistNumber = isWaitlisted ? i - selectedEvent.max_capacity + 1 : 0;
-                      let rowColor = "bg-white hover:bg-slate-50 transition-colors"; 
-                      let badgeColor = "bg-slate-100 text-slate-400";
-                      if (app.user_type === 'guest') { rowColor = "bg-emerald-50/80 hover:bg-emerald-100/80 transition-colors"; badgeColor = "bg-emerald-200 text-emerald-700"; } 
-                      else if (app.user_type === 'ob') { rowColor = "bg-blue-50/80 hover:bg-blue-100/80 transition-colors"; badgeColor = "bg-blue-600/20 text-blue-700"; } 
-                      else if (app.participation_type !== 'full') { rowColor = "bg-amber-50/80 hover:bg-amber-100/80 transition-colors"; badgeColor = "bg-amber-200 text-amber-700"; }
-                      return (
-                        <div key={i} className={`flex justify-between items-center py-2 px-3 group flex-wrap md:flex-nowrap ${rowColor} ${isWaitlisted ? 'opacity-40 grayscale hover:opacity-60' : ''}`}>
-                          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden mr-2">
-                            <span className="text-[10px] font-black opacity-30 w-4 flex-shrink-0">{String(i + 1).padStart(2, '0')}</span>
-                            <div className="flex items-center gap-1.5 min-w-0 truncate">
-                              <span className="font-bold text-slate-800 text-[12px] truncate leading-none">{app.user_name}</span>
-                              <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' || app.user_type === '회장' || app.user_type === '부회장' || app.user_type === '임원진' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
-                              {isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">{t.waitlist} {waitlistNumber}</span>}
-                              {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
-                              {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
-                              {app.afterparty_join && <span className="text-[10px]">🍻</span>}
+                    {/* 🔥 OB와 일반 부원을 분리 및 순서 재조정, 번호 체계 변경 로직 */}
+                    {(() => {
+                      const obApps = applicants.filter(a => a.user_type === 'ob');
+                      const regApps = applicants.filter(a => a.user_type !== 'ob');
+                      
+                      const displayApps = [
+                        ...obApps.map(app => ({ 
+                          ...app, 
+                          displayIndex: '-', 
+                          isWaitlisted: false, 
+                          waitlistNumber: 0 
+                        })),
+                        ...regApps.map((app, i) => {
+                          const isWaitlisted = selectedEvent?.max_capacity && i >= selectedEvent.max_capacity;
+                          const waitlistNumber = isWaitlisted ? i - selectedEvent.max_capacity + 1 : 0;
+                          return { 
+                            ...app, 
+                            displayIndex: String(i + 1).padStart(2, '0'), 
+                            isWaitlisted, 
+                            waitlistNumber 
+                          };
+                        })
+                      ];
+
+                      return displayApps.map((app, i) => {
+                        let rowColor = "bg-white hover:bg-slate-50 transition-colors"; 
+                        let badgeColor = "bg-slate-100 text-slate-400";
+                        if (app.user_type === 'guest') { rowColor = "bg-emerald-50/80 hover:bg-emerald-100/80 transition-colors"; badgeColor = "bg-emerald-200 text-emerald-700"; } 
+                        else if (app.user_type === 'ob') { rowColor = "bg-blue-50/80 hover:bg-blue-100/80 transition-colors"; badgeColor = "bg-blue-600/20 text-blue-700"; } 
+                        else if (app.participation_type !== 'full') { rowColor = "bg-amber-50/80 hover:bg-amber-100/80 transition-colors"; badgeColor = "bg-amber-200 text-amber-700"; }
+                        return (
+                          <div key={app.id || i} className={`flex justify-between items-center py-2 px-3 group flex-wrap md:flex-nowrap ${rowColor} ${app.isWaitlisted ? 'opacity-40 grayscale hover:opacity-60' : ''}`}>
+                            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden mr-2">
+                              {/* 🔥 번호 대신 OB는 - 표시 */}
+                              <span className="text-[10px] font-black opacity-30 w-4 flex-shrink-0 text-center">{app.displayIndex}</span>
+                              <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                <span className="font-bold text-slate-800 text-[12px] truncate leading-none">{app.user_name}</span>
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' || app.user_type === '회장' || app.user_type === '부회장' || app.user_type === '임원진' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
+                                {/* 🔥 OB는 대기열 번호가 절대 뜨지 않음 */}
+                                {app.isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">{t.waitlist} {app.waitlistNumber}</span>}
+                                {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
+                                {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
+                                {app.afterparty_join && <span className="text-[10px]">🍻</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">
+                              {app.participation_type !== 'full' && (
+                                <span className="text-[8px] font-black bg-white/60 text-amber-600 px-1 py-0.5 rounded border border-amber-200 leading-none">
+                                  {app.participation_type === 'partial_7_9' ? '19-21' : '20-22'}
+                                </span>
+                              )}
+                              <div className="flex items-baseline gap-1 tabular-nums">
+                                <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
+                                <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">
-                            {app.participation_type !== 'full' && (
-                              <span className="text-[8px] font-black bg-white/60 text-amber-600 px-1 py-0.5 rounded border border-amber-200 leading-none">
-                                {app.participation_type === 'partial_7_9' ? '19-21' : '20-22'}
-                              </span>
-                            )}
-                            <div className="flex items-baseline gap-1 tabular-nums">
-                              <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
-                              <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
                 </div>
@@ -634,10 +657,14 @@ export default function Home() {
           </div>
         </div>
       )}
-      <footer className="mt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
-        <p>SNUMINTON © 2026 | Developed by 이주원</p>
-        
+
+      <footer className="mt-auto pt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
+        <p>© 2026 SNUMINTON. All rights reserved.</p>
+        <p className="mt-1">
+          Developed by <a href="https://github.com/본인깃허브" target="_blank" rel="noopener noreferrer" className="font-bold text-slate-500 hover:text-blue-500 transition-colors">본인 이름</a>
+        </p>
       </footer>
+
     </main>
   );
 }

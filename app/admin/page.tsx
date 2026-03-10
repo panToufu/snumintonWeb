@@ -45,7 +45,6 @@ export default function AdminPage() {
   const [editCountAttendance, setEditCountAttendance] = useState(true);
   const [editExecs, setEditExecs] = useState<string[]>([]);
 
-  // 🔥 직책별 순위(회장 1순위, 부회장 2순위, 임원진 3순위)를 매겨서 정렬합니다.
   const executives = members
     .filter(m => ['회장', '부회장', '임원진'].includes(m.user_type))
     .sort((a, b) => {
@@ -95,7 +94,26 @@ export default function AdminPage() {
 
   const fetchApplicants = async (eventId: string) => {
     const { data } = await supabase.from("applications").select("*").eq("event_id", eventId).order("applied_at", { ascending: true });
-    if (data) setApplicants(data);
+    if (data) {
+      // 🔥 정원 카운팅: OB는 카운트 제외, 게스트/부원만 카운트
+      let currentSpot = 0;
+      const processedApps = data.map(app => {
+        if (app.user_type !== 'ob') {
+          currentSpot++; // OB가 아닐 때만 정원 증가
+        }
+        return { 
+          ...app, 
+          // 24명을 초과하면 대기열(waitlisted)로 처리
+          waitlisted: currentSpot > 24,
+          // 게스트가 빠지더라도 본인의 정확한 신청 순번을 표시하기 위해 저장
+          queueNumber: currentSpot 
+        };
+      });
+
+      // 🔥 출석체크 명단 렌더링용: OB와 게스트는 화면에서 숨김
+      const displayList = processedApps.filter(app => app.user_type !== 'ob' && app.user_type !== 'guest');
+      setApplicants(displayList);
+    }
   };
 
   const handleEventClickForEdit = (info: any) => {
@@ -164,12 +182,10 @@ export default function AdminPage() {
     else fetchMembers();
   };
 
-  const cycleAttendance = async (appId: string, currentStatus: string) => {
-    let nextStatus = 'present';
-    if (currentStatus === 'present') nextStatus = 'late';
-    if (currentStatus === 'late') nextStatus = 'none';
-    const { error } = await supabase.from("applications").update({ attendance_status: nextStatus }).eq("id", appId);
+  const updateAttendanceStatus = async (appId: string, status: string) => {
+    const { error } = await supabase.from("applications").update({ attendance_status: status }).eq("id", appId);
     if (!error && selectedEventId) fetchApplicants(selectedEventId);
+    else if (error) alert("상태 업데이트 오류: " + error.message);
   };
 
   const handleDeleteApplication = async (appId: string) => {
@@ -180,15 +196,20 @@ export default function AdminPage() {
 
   const calculateRanking = async () => {
     if (members.length === 0) return;
+    
+    const activeMembers = members.filter(m => m.user_type !== 'ob');
+
     const startDate = new Date(currentYear, currentMonth - 1, 1).toISOString();
     const endDate = new Date(currentYear, currentMonth, 1).toISOString();
     const { data: monthEvents } = await supabase.from("events").select("id, start_at, title, type, is_attendance_counted").gte("start_at", startDate).lt("start_at", endDate).order("start_at", { ascending: true });
     const eventsList = (monthEvents || []).filter(e => e.is_attendance_counted !== false);
     setMonthEventsList(eventsList);
     const eventIds = eventsList.map(e => e.id);
-    if (eventIds.length === 0) { setMonthlyRanking(members.map(m => ({ ...m, count: 0, attendanceRecord: {} }))); return; }
+    
+    if (eventIds.length === 0) { setMonthlyRanking(activeMembers.map(m => ({ ...m, count: 0, attendanceRecord: {} }))); return; }
     const { data: apps } = await supabase.from("applications").select("user_name, event_id, attendance_status").in("event_id", eventIds);
-    const ranking = members.map(m => {
+    
+    const ranking = activeMembers.map(m => {
       const memberApps = apps?.filter(a => a.user_name === m.name) || [];
       let count = 0;
       const attendanceRecord: Record<string, string> = {};
@@ -285,25 +306,56 @@ export default function AdminPage() {
                         <span className="text-[10px] md:text-xs font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded mb-1 md:mb-2 inline-block">{selectedEventDate && new Date(selectedEventDate).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>
                         <h2 className="text-lg md:text-xl font-black text-slate-900">{selectedEventTitle} 출석부</h2>
                       </div>
-                      <span className="text-xs md:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 md:px-3 py-1.5 rounded-xl shadow-sm">총 {applicants.length}명</span>
+                      <span className="text-xs md:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 md:px-3 py-1.5 rounded-xl shadow-sm">출석관리 {applicants.length}명</span>
                     </div>
                     <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                      {applicants.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">신청자가 없습니다.</div> : applicants.map((app, i) => {
+                      {applicants.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">출석 체크할 부원이 없습니다.</div> : applicants.map((app, i) => {
                           const status = app.attendance_status || 'none';
-                          let btnClass = "bg-slate-100 text-slate-400 hover:bg-slate-200";
-                          let btnText = "출석 대기";
-                          if (status === 'present') { btnClass = "bg-emerald-100 text-emerald-700 border-emerald-200 shadow-inner"; btnText = "🟢 출석 완료"; }
-                          else if (status === 'late') { btnClass = "bg-amber-100 text-amber-700 border-amber-200 shadow-inner"; btnText = "🔺 지각 처리"; }
-                          return (
-                            <div key={app.id} className="flex items-center justify-between p-3 md:p-3.5 hover:bg-slate-50 transition-colors">
-                              <div className="flex items-center gap-2 md:gap-3 min-w-0">
-                                <span className="text-[10px] md:text-xs font-black text-slate-300 w-3 md:w-4">{i + 1}</span><span className="font-bold text-slate-800 text-xs md:text-sm truncate max-w-[60px] md:max-w-none">{app.user_name}</span>
-                                <span className="text-[8px] md:text-[10px] bg-slate-100 text-slate-500 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
-                                {app.participation_type !== 'full' && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">부분참</span>}
+                          
+                          // 🔥 부분참 세부 텍스트 구분
+                          let partialText = "";
+                          if (app.participation_type === 'partial_7_9') partialText = "부분참 (19-21)";
+                          if (app.participation_type === 'partial_8_10') partialText = "부분참 (20-22)";
+
+                          // 🔥 24명 컷 이후 인원 렌더링 (대기자) - 버튼 없이 이름만 표시
+                          if (app.waitlisted) {
+                            return (
+                              <div key={app.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 md:p-3.5 bg-slate-50 opacity-60">
+                                <div className="flex items-center gap-2 md:gap-3 min-w-0 w-full md:w-auto">
+                                  <span className="text-[10px] md:text-xs font-black text-slate-400 w-4 md:w-5">-</span>
+                                  <span className="font-bold text-slate-500 text-xs md:text-sm truncate">{app.user_name}</span>
+                                  <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
+                                  {partialText && <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 border border-slate-300 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
+                                  <span className="text-[10px] font-bold text-slate-400 ml-1">(정원 초과)</span>
+                                </div>
+                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
                               </div>
-                              <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0">
-                                <button onClick={() => cycleAttendance(app.id, status)} className={`w-20 md:w-24 py-1.5 md:py-2 text-[10px] md:text-xs font-bold rounded-xl border transition-all active:scale-95 ${btnClass}`}>{btnText}</button>
-                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-red-300 hover:bg-red-50 hover:text-red-500 rounded-xl transition-colors text-xs md:text-sm">✕</button>
+                            );
+                          }
+                          
+                          // 🔥 24명 이내 인원 렌더링 (정상 출석 버튼 표시)
+                          const presentClass = status === 'present' ? 'bg-emerald-100 text-emerald-700 border-emerald-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
+                          const lateClass = status === 'late' ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
+                          const absentClass = status === 'absent' ? 'bg-red-100 text-red-700 border-red-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
+                          const noneClass = status === 'none' ? 'bg-slate-200 text-slate-700 border-slate-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
+
+                          return (
+                            <div key={app.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 md:p-3.5 hover:bg-slate-50 transition-colors gap-2 md:gap-0">
+                              <div className="flex items-center gap-2 md:gap-3 min-w-0 w-full md:w-auto">
+                                <span className="text-[10px] md:text-xs font-black text-slate-400 w-4 md:w-5">{app.queueNumber}</span>
+                                <span className="font-bold text-slate-800 text-xs md:text-sm truncate">{app.user_name}</span>
+                                <span className="text-[8px] md:text-[10px] bg-slate-100 text-slate-500 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
+                                {partialText && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
+                              </div>
+                              
+                              <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
+                                <div className="flex rounded-lg overflow-hidden shadow-sm border border-slate-200">
+                                  <button onClick={() => updateAttendanceStatus(app.id, 'present')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${presentClass}`}>출석</button>
+                                  <button onClick={() => updateAttendanceStatus(app.id, 'late')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${lateClass}`}>지각</button>
+                                  <button onClick={() => updateAttendanceStatus(app.id, 'absent')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${absentClass}`}>불참</button>
+                                  <button onClick={() => updateAttendanceStatus(app.id, 'none')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all ${noneClass}`}>대기</button>
+                                </div>
+                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
                               </div>
                             </div>
                           );
@@ -355,7 +407,7 @@ export default function AdminPage() {
                           <td className="p-2 md:p-3 text-slate-400 font-bold sticky left-0 bg-white/95 backdrop-blur-sm z-10 border-r border-slate-50">{idx + 1}</td><td className="p-2 md:p-3 text-left font-bold text-slate-800 sticky left-8 md:left-16 bg-white/95 backdrop-blur-sm z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-50 truncate max-w-[4rem] md:max-w-none">{stat.name}</td><td className="p-2 md:p-3 font-black text-blue-600 bg-blue-50/30 border-r border-slate-50">{stat.count}</td>
                           {monthEventsList.map(ev => {
                             const status = stat.attendanceRecord[ev.id];
-                            return <td key={ev.id} className="p-1.5 md:p-3 border-r border-slate-50 text-sm md:text-base">{status === 'present' ? "🟢" : status === 'late' ? "🔺" : status === 'none' ? <span className="text-red-300 font-bold text-[10px] md:text-xs">✕</span> : <span className="text-slate-200 font-light text-[10px] md:text-xs">-</span>}</td>;
+                            return <td key={ev.id} className="p-1.5 md:p-3 border-r border-slate-50 text-sm md:text-base">{status === 'present' ? "🟢" : status === 'late' ? "🔺" : status === 'absent' ? <span className="text-red-400 font-bold text-[10px] md:text-xs">❌</span> : <span className="text-slate-200 font-light text-[10px] md:text-xs">-</span>}</td>;
                           })}
                         </tr>
                       ))}
@@ -491,7 +543,6 @@ export default function AdminPage() {
                   <p className="text-xs text-slate-400 ml-1">등록된 임원진이 없습니다.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {/* 🔥 체크박스 리스트가 회장->부회장->임원진 순으로 나옵니다 */}
                     {executives.map(exec => {
                       const isSelected = editExecs.includes(exec.name);
                       return (
