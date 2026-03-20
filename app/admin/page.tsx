@@ -45,6 +45,10 @@ export default function AdminPage() {
   const [editCountAttendance, setEditCountAttendance] = useState(true);
   const [editExecs, setEditExecs] = useState<string[]>([]);
 
+  // 🔥 개별 신청 정보 수정을 위한 상태 변수 추가
+  const [isEditAppModalOpen, setIsEditAppModalOpen] = useState(false);
+  const [editAppTarget, setEditAppTarget] = useState<any>(null);
+
   const executives = members
     .filter(m => ['회장', '부회장', '임원진'].includes(m.user_type))
     .sort((a, b) => {
@@ -95,22 +99,18 @@ export default function AdminPage() {
   const fetchApplicants = async (eventId: string) => {
     const { data } = await supabase.from("applications").select("*").eq("event_id", eventId).order("applied_at", { ascending: true });
     if (data) {
-      // 🔥 정원 카운팅: OB는 카운트 제외, 게스트/부원만 카운트
       let currentSpot = 0;
       const processedApps = data.map(app => {
         if (app.user_type !== 'ob') {
-          currentSpot++; // OB가 아닐 때만 정원 증가
+          currentSpot++; 
         }
         return { 
           ...app, 
-          // 24명을 초과하면 대기열(waitlisted)로 처리
           waitlisted: currentSpot > 24,
-          // 게스트가 빠지더라도 본인의 정확한 신청 순번을 표시하기 위해 저장
           queueNumber: currentSpot 
         };
       });
 
-      // 🔥 출석체크 명단 렌더링용: OB와 게스트는 화면에서 숨김
       const displayList = processedApps.filter(app => app.user_type !== 'ob' && app.user_type !== 'guest');
       setApplicants(displayList);
     }
@@ -188,6 +188,21 @@ export default function AdminPage() {
     else if (error) alert("상태 업데이트 오류: " + error.message);
   };
 
+  // 🔥 신청자 개별 정보 수정 저장 로직
+  const handleSaveAppEdit = async () => {
+    const { error } = await supabase.from("applications").update({
+      participation_type: editAppTarget.participation_type,
+      lesson_choice: editAppTarget.lesson_choice,
+      afterparty_join: editAppTarget.afterparty_join
+    }).eq("id", editAppTarget.id);
+
+    if (error) alert("수정 오류: " + error.message);
+    else {
+      setIsEditAppModalOpen(false);
+      if (selectedEventId) fetchApplicants(selectedEventId);
+    }
+  };
+
   const handleDeleteApplication = async (appId: string) => {
     if (!confirm("이 신청 내역을 삭제하시겠습니까?")) return;
     await supabase.from("applications").delete().eq("id", appId);
@@ -254,6 +269,8 @@ export default function AdminPage() {
     return <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">부원</span>;
   };
 
+  const currentSelectedEventObj = events.find(e => e.id === selectedEventId);
+
   return (
     <div className="min-h-screen bg-slate-50 p-2 md:p-8">
       <style dangerouslySetInnerHTML={{__html: `
@@ -312,28 +329,29 @@ export default function AdminPage() {
                       {applicants.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">출석 체크할 부원이 없습니다.</div> : applicants.map((app, i) => {
                           const status = app.attendance_status || 'none';
                           
-                          // 🔥 부분참 세부 텍스트 구분
                           let partialText = "";
                           if (app.participation_type === 'partial_7_9') partialText = "부분참 (19-21)";
                           if (app.participation_type === 'partial_8_10') partialText = "부분참 (20-22)";
 
-                          // 🔥 24명 컷 이후 인원 렌더링 (대기자) - 버튼 없이 이름만 표시
                           if (app.waitlisted) {
                             return (
                               <div key={app.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 md:p-3.5 bg-slate-50 opacity-60">
                                 <div className="flex items-center gap-2 md:gap-3 min-w-0 w-full md:w-auto">
                                   <span className="text-[10px] md:text-xs font-black text-slate-400 w-4 md:w-5">-</span>
-                                  <span className="font-bold text-slate-500 text-xs md:text-sm truncate">{app.user_name}</span>
+                                  <span className="font-bold text-slate-500 text-xs md:text-sm truncate line-through">{app.user_name}</span>
                                   <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
                                   {partialText && <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 border border-slate-300 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
                                   <span className="text-[10px] font-bold text-slate-400 ml-1">(정원 초과)</span>
                                 </div>
-                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
+                                <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
+                                  {/* 🔥 대기자도 정보 수정 가능하도록 연필 버튼 추가 */}
+                                  <button onClick={() => { setEditAppTarget(app); setIsEditAppModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 정보 수정">✏️</button>
+                                  <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
+                                </div>
                               </div>
                             );
                           }
                           
-                          // 🔥 24명 이내 인원 렌더링 (정상 출석 버튼 표시)
                           const presentClass = status === 'present' ? 'bg-emerald-100 text-emerald-700 border-emerald-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
                           const lateClass = status === 'late' ? 'bg-amber-100 text-amber-700 border-amber-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
                           const absentClass = status === 'absent' ? 'bg-red-100 text-red-700 border-red-300 shadow-inner z-10 font-black' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50';
@@ -355,6 +373,8 @@ export default function AdminPage() {
                                   <button onClick={() => updateAttendanceStatus(app.id, 'absent')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${absentClass}`}>불참</button>
                                   <button onClick={() => updateAttendanceStatus(app.id, 'none')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all ${noneClass}`}>대기</button>
                                 </div>
+                                {/* 🔥 개별 신청 정보 수정 버튼 */}
+                                <button onClick={() => { setEditAppTarget(app); setIsEditAppModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0 ml-1" title="신청 정보 수정">✏️</button>
                                 <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
                               </div>
                             </div>
@@ -566,6 +586,63 @@ export default function AdminPage() {
               <div className="flex gap-2 md:gap-3 mt-2 md:mt-4">
                 <button onClick={handleDeleteEvent} className="px-4 py-3 bg-red-50 text-red-500 font-bold text-sm rounded-xl hover:bg-red-100 transition-colors border border-red-100 whitespace-nowrap">🗑️ 삭제</button>
                 <button onClick={handleUpdateEvent} className="flex-1 py-3 bg-amber-400 text-amber-900 font-black text-sm rounded-xl hover:bg-amber-500 transition-colors shadow-lg shadow-amber-400/30">수정 저장</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================= */}
+        {/* 🔥 개별 신청 정보 수정 팝업 모달 추가 */}
+        {/* ========================================= */}
+        {isEditAppModalOpen && editAppTarget && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setIsEditAppModalOpen(false)}>
+            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col gap-4 md:gap-5 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-black text-lg text-slate-800 border-b border-slate-100 pb-3">
+                <span className="text-blue-600">{editAppTarget.user_name}</span> 님의 신청 정보
+              </h3>
+
+              {/* 정규 운동일 경우: 참여 시간 변경 */}
+              {currentSelectedEventObj?.type === 'normal' && (
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">참여 시간 (정참/부분참)</label>
+                   <select 
+                     value={editAppTarget.participation_type || 'full'} 
+                     onChange={e => setEditAppTarget({...editAppTarget, participation_type: e.target.value})} 
+                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 font-bold text-sm"
+                   >
+                     <option value="full">정참 (19-22)</option>
+                     <option value="partial_7_9">부분참 (19-21)</option>
+                     <option value="partial_8_10">부분참 (20-22)</option>
+                   </select>
+                 </div>
+              )}
+
+              {/* 레슨일 경우: 레슨 요일 변경 */}
+              {currentSelectedEventObj?.type === 'lesson' && (
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">레슨 요일 변경</label>
+                   <select 
+                     value={editAppTarget.lesson_choice || 'tue_thu'} 
+                     onChange={e => setEditAppTarget({...editAppTarget, lesson_choice: e.target.value})} 
+                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 font-bold text-sm"
+                   >
+                     <option value="tue_thu">화/목 레슨</option>
+                     <option value="sat">토요 레슨</option>
+                   </select>
+                 </div>
+              )}
+
+              {/* 뒷풀이가 있는 경우: 뒷풀이 참석 여부 변경 */}
+              {currentSelectedEventObj?.has_afterparty && (
+                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mt-2" onClick={() => setEditAppTarget({...editAppTarget, afterparty_join: !editAppTarget.afterparty_join})}>
+                    <div className="font-bold text-sm text-slate-800">뒷풀이 참석 여부</div>
+                    <div className={`w-12 h-6 rounded-full transition-colors relative ${editAppTarget.afterparty_join ? 'bg-blue-500' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${editAppTarget.afterparty_join ? 'left-7' : 'left-1'}`} /></div>
+                 </div>
+              )}
+
+              <div className="flex gap-2 mt-4">
+                 <button onClick={() => setIsEditAppModalOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-200 transition-colors">취소</button>
+                 <button onClick={handleSaveAppEdit} className="flex-1 py-3.5 bg-blue-600 text-white font-bold text-sm rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">수정 완료</button>
               </div>
             </div>
           </div>
