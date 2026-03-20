@@ -24,7 +24,7 @@ const dict = {
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
-    attendanceAuthDesc: "출석부를 보려면 등록된 부원/OB 이름을 한 번 입력해주세요. (이후 자동 접속)",
+    attendanceAuthDesc: "출석부를 보려면 등록된 부원/OB 이름을 한 일력해주세요. (이후 자동 접속)",
     attendanceAuthPlaceholder: "내 이름 입력",
     close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
@@ -69,6 +69,10 @@ const dict = {
     alertAdminFail: "비밀번호가 일치하지 않습니다.",
     participatingExecs: "오늘 참여하는 운영진",
     noEvents: "진행 중인 투표 및 행사가 없습니다.",
+    // 🔥 게스트 결제 안내 다국어 추가
+    guestPaymentTitle: "💸 게스트비 입금 안내",
+    guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
+    paymentCompleted: "입금했습니다",
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -131,6 +135,10 @@ const dict = {
     alertAdminFail: "Incorrect password.",
     participatingExecs: "Participating Executives",
     noEvents: "There are no ongoing polls or events.",
+    // 🔥 게스트 결제 안내 다국어 추가
+    guestPaymentTitle: "💸 Guest Fee Transfer",
+    guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
+    paymentCompleted: "I have transferred",
   }
 };
 
@@ -168,6 +176,9 @@ export default function Home() {
   const [isAttendanceAuthenticated, setIsAttendanceAuthenticated] = useState(false);
 
   const [executives, setExecutives] = useState<any[]>([]);
+  
+  // 🔥 게스트 팝업을 관리할 상태 추가
+  const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
 
   useEffect(() => {
     const isAuth = localStorage.getItem("snuminton_attendance_auth");
@@ -256,7 +267,7 @@ export default function Home() {
   const status = getButtonStatus();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleApply();
+    if (e.key === 'Enter') handleApplyClick(); // 🔥 수정됨
   };
 
   const handleAttendanceAuth = async () => {
@@ -287,11 +298,21 @@ export default function Home() {
     } else alert(t.alertNotRegistered);
   };
 
-  const handleApply = async () => {
+  // 🔥 신청 버튼을 눌렀을 때 게스트 여부를 확인하고 분기하는 함수
+  const handleApplyClick = () => {
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
+    if (userType === "guest") {
+      setIsGuestPaymentModalOpen(true); // 게스트면 팝업 띄우기
+    } else {
+      executeApplication(); // 게스트가 아니면 바로 처리
+    }
+  };
+
+  // 🔥 실제 DB에 신청 내역을 전송하는 핵심 로직
+  const executeApplication = async () => {
     let finalUserName = userName; 
 
     if (userType === "member") {
@@ -328,6 +349,7 @@ export default function Home() {
     if (error) alert(t.alertError + error.message); 
     else {
       alert(`${finalUserName}${t.alertSuccess}`); 
+      setIsGuestPaymentModalOpen(false); // 🔥 성공 후 결제 팝업 닫기
       setUserName(""); setGuestPw(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); setActiveTab("list"); 
@@ -467,7 +489,6 @@ export default function Home() {
           <div className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex md:hidden border-b border-slate-100 bg-slate-50/50">
               <button onClick={() => setActiveTab("info")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "info" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.infoTab}</button>
-              {/* 🔥 모바일 탭 정원 표시에도 OB 인원 제외 적용 */}
               <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.filter(a => a.user_type !== 'ob').length}</span></button>
             </div>
             <div className="flex flex-col md:flex-row overflow-hidden flex-1 min-h-0">
@@ -555,7 +576,8 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  <button disabled={status.disabled} onClick={handleApply} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
+                  {/* 🔥 핸들러 변경 */}
+                  <button disabled={status.disabled} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
                     {status.text}
                   </button>
                 </div>
@@ -564,7 +586,6 @@ export default function Home() {
               <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-xl font-black text-slate-900">{t.listTab}</h3>
-                  {/* 🔥 정원 카운트에서 OB 인원 제외 적용 */}
                   <span className="bg-white px-3 py-1 rounded-full text-blue-600 text-xs font-black shadow-sm border border-slate-200">
                     {applicants.filter(a => a.user_type !== 'ob').length} / {selectedEvent?.max_capacity}
                   </span>
@@ -574,7 +595,6 @@ export default function Home() {
                   <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-[11px] font-medium">{t.noApplicants}</p></div>
                 ) : (
                   <div className="divide-y divide-white/50 border-t border-slate-100">
-                    {/* 🔥 OB와 일반 부원을 분리 및 순서 재조정, 번호 체계 변경 로직 */}
                     {(() => {
                       const obApps = applicants.filter(a => a.user_type === 'ob');
                       const regApps = applicants.filter(a => a.user_type !== 'ob');
@@ -607,12 +627,10 @@ export default function Home() {
                         return (
                           <div key={app.id || i} className={`flex justify-between items-center py-2 px-3 group flex-wrap md:flex-nowrap ${rowColor} ${app.isWaitlisted ? 'opacity-40 grayscale hover:opacity-60' : ''}`}>
                             <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden mr-2">
-                              {/* 🔥 번호 대신 OB는 - 표시 */}
                               <span className="text-[10px] font-black opacity-30 w-4 flex-shrink-0 text-center">{app.displayIndex}</span>
                               <div className="flex items-center gap-1.5 min-w-0 truncate">
                                 <span className="font-bold text-slate-800 text-[12px] truncate leading-none">{app.user_name}</span>
                                 <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' || app.user_type === '회장' || app.user_type === '부회장' || app.user_type === '임원진' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
-                                {/* 🔥 OB는 대기열 번호가 절대 뜨지 않음 */}
                                 {app.isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">{t.waitlist} {app.waitlistNumber}</span>}
                                 {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
                                 {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
@@ -658,6 +676,38 @@ export default function Home() {
         </div>
       )}
 
+      {/* 🔥 게스트 결제 모달 추가 */}
+      {isGuestPaymentModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setIsGuestPaymentModalOpen(false)}>
+          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-2xl mb-4">💸</div>
+            <h3 className="font-black text-xl text-slate-900 mb-2">{t.guestPaymentTitle}</h3>
+            <div className="text-sm text-slate-600 text-center mb-6 w-full">
+              <p className="leading-relaxed mb-4">{t.guestPaymentDesc}</p>
+              
+              {/* 👇 클릭 시 계좌번호가 복사되는 버튼 👇 */}
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText("3333365925467"); // 👈 여기에 복사될 실제 계좌번호(숫자만)를 넣어주세요!
+                  alert("계좌번호가 복사되었습니다! 📋");
+                }}
+                className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-100 hover:bg-slate-200 px-4 py-3 rounded-xl transition-all active:scale-95 group"
+                title="클릭해서 복사하기"
+              >
+                <span className="text-[13px] md:text-sm">카카오뱅크 3333365925467</span>
+                <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: 안진식</span><span className="text-slate-400 group-hover:text-blue-500 transition-colors">📋</span>
+              </button>
+              <p className="text-[10px] text-slate-400 mt-2">박스를 클릭하면 계좌번호가 복사됩니다.</p>
+            </div>
+
+            <div className="flex gap-2 w-full">
+              <button onClick={() => setIsGuestPaymentModalOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
+              <button onClick={executeApplication} className="flex-1 py-3.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/30">{t.paymentCompleted}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer className="mt-auto pt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
         <p>© 2026 SNUMINTON. | Developed by 이주원</p>
       </footer>
@@ -665,3 +715,4 @@ export default function Home() {
     </main>
   );
 }
+
