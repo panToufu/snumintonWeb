@@ -11,7 +11,7 @@ const dict = {
   ko: {
     ongoing: "📌 진행 중인 투표 및 행사",
     lesson: "정기 레슨",
-    special: "특별 행사",
+    special: "행사", // 🔥 '특별 행사'에서 '행사'로 수정
     date: "일시:",
     applyView: "신청/보기",
     suggestion: "건의함",
@@ -24,7 +24,7 @@ const dict = {
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
-    attendanceAuthDesc: "출석부를 보려면 등록된 부원/OB 이름을 한 일력해주세요. (이후 자동 접속)",
+    attendanceAuthDesc: "출석부를 보려면 등록된 부원 이름을 입력해주세요.",
     attendanceAuthPlaceholder: "내 이름 입력",
     close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
@@ -69,7 +69,6 @@ const dict = {
     alertAdminFail: "비밀번호가 일치하지 않습니다.",
     participatingExecs: "오늘 참여하는 운영진",
     noEvents: "진행 중인 투표 및 행사가 없습니다.",
-    // 🔥 게스트 결제 안내 다국어 추가
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
     paymentCompleted: "입금했습니다",
@@ -77,7 +76,7 @@ const dict = {
   en: {
     ongoing: "📌 Ongoing Polls & Events",
     lesson: "Regular Lesson",
-    special: "Special Event",
+    special: "Event", // 🔥 Special Event -> Event
     date: "Date:",
     applyView: "Apply / View",
     suggestion: "Suggestion Box",
@@ -135,7 +134,6 @@ const dict = {
     alertAdminFail: "Incorrect password.",
     participatingExecs: "Participating Executives",
     noEvents: "There are no ongoing polls or events.",
-    // 🔥 게스트 결제 안내 다국어 추가
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
     paymentCompleted: "I have transferred",
@@ -177,7 +175,6 @@ export default function Home() {
 
   const [executives, setExecutives] = useState<any[]>([]);
   
-  // 🔥 게스트 팝업을 관리할 상태 추가
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
 
   useEffect(() => {
@@ -192,7 +189,16 @@ export default function Home() {
 
   const fetchEvents = async () => {
     const { data } = await supabase.from("events").select("*");
-    if (data) setEvents(data.map(ev => ({ id: ev.id, title: ev.title, start: ev.start_at, extendedProps: { ...ev } })));
+    if (data) {
+      setEvents(data.map(ev => ({ 
+        id: ev.id, 
+        title: ev.title, 
+        start: ev.start_at, 
+        end: ev.end_at,
+        color: ev.type === 'normal' ? '#3b82f6' : ev.type === 'lesson' ? '#8b5cf6' : '#ec4899',
+        extendedProps: { ...ev } 
+      })));
+    }
   };
 
   const fetchPolls = async () => {
@@ -242,21 +248,30 @@ export default function Home() {
     setMonthlyRanking(ranking);
   };
 
+  // 🔥 관리자가 지정한 오픈 시간을 우선 적용하도록 로직 수정
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
     const now = new Date();
-    const eventStart = new Date(selectedEvent.start);
-    const openTime = new Date(eventStart);
+    let openTime;
 
-    if (userType === "member" || userType === "ob") {
-      openTime.setDate(openTime.getDate() - 2); openTime.setHours(23, 0, 0, 0);
+    // 만약 신청 시작 시간이 지정되어 있다면 그것을 무조건 우선 사용
+    if (selectedEvent.registration_start_at) {
+      openTime = new Date(selectedEvent.registration_start_at);
     } else {
-      openTime.setDate(openTime.getDate() - 1); openTime.setHours(15, 0, 0, 0);
+      // 지정 안되어있으면 기존의 D-2, D-1 룰 사용
+      const eventStart = new Date(selectedEvent.start);
+      openTime = new Date(eventStart);
+      if (userType === "member" || userType === "ob") {
+        openTime.setDate(openTime.getDate() - 2); openTime.setHours(23, 0, 0, 0);
+      } else {
+        openTime.setDate(openTime.getDate() - 1); openTime.setHours(15, 0, 0, 0);
+      }
     }
 
     const isOpen = now >= openTime;
     const timeFormatOptions: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" };
     const timeString = openTime.toLocaleString(lang === "ko" ? "ko-KR" : "en-US", timeFormatOptions);
+    
     return {
       disabled: !isOpen,
       text: isOpen ? t.applyBtn : `${timeString} ${t.openAt}`,
@@ -267,7 +282,7 @@ export default function Home() {
   const status = getButtonStatus();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleApplyClick(); // 🔥 수정됨
+    if (e.key === 'Enter') handleApplyClick(); 
   };
 
   const handleAttendanceAuth = async () => {
@@ -298,25 +313,23 @@ export default function Home() {
     } else alert(t.alertNotRegistered);
   };
 
-  // 🔥 신청 버튼을 눌렀을 때 게스트 여부를 확인하고 분기하는 함수
   const handleApplyClick = () => {
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
     if (userType === "guest") {
-      setIsGuestPaymentModalOpen(true); // 게스트면 팝업 띄우기
+      setIsGuestPaymentModalOpen(true); 
     } else {
-      executeApplication(); // 게스트가 아니면 바로 처리
+      executeApplication(); 
     }
   };
 
-  // 🔥 실제 DB에 신청 내역을 전송하는 핵심 로직
   const executeApplication = async () => {
     let finalUserName = userName; 
 
-    if (userType === "member") {
-      const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "회장", "부회장", "임원진"]);
+    if (userType === "member" || userType === "ob") {
+      const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
       if (!membersList) return alert(t.alertNotRegistered);
       const input = userName.trim().toLowerCase();
       const matchedMember = membersList.find(m => {
@@ -349,7 +362,7 @@ export default function Home() {
     if (error) alert(t.alertError + error.message); 
     else {
       alert(`${finalUserName}${t.alertSuccess}`); 
-      setIsGuestPaymentModalOpen(false); // 🔥 성공 후 결제 팝업 닫기
+      setIsGuestPaymentModalOpen(false); 
       setUserName(""); setGuestPw(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); setActiveTab("list"); 
@@ -368,7 +381,8 @@ export default function Home() {
     setGuestPw("");
   };
 
-  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal');
+  // 🔥 allow_registration이 false인(신청을 받지 않는) 행사는 메인 리스트에서 숨기도록 조건 추가
+  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
   const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
 
   return (
@@ -396,9 +410,9 @@ export default function Home() {
               {specialEvents.map((ev, idx) => (
                 <div key={`special-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
                   <div>
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
                     <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })}</p>
+                    <p className="text-xs text-slate-500 mt-1">{t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
                   </div>
                   <button onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0">{t.applyView}</button>
                 </div>
@@ -489,7 +503,10 @@ export default function Home() {
           <div className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex md:hidden border-b border-slate-100 bg-slate-50/50">
               <button onClick={() => setActiveTab("info")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "info" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.infoTab}</button>
-              <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.filter(a => a.user_type !== 'ob').length}</span></button>
+              {/* 🔥 신청을 받는 경우에만 신청 현황 탭 버튼 표시 */}
+              {selectedEvent?.allow_registration !== false && (
+                <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.filter(a => a.user_type !== 'ob').length}</span></button>
+              )}
             </div>
             <div className="flex flex-col md:flex-row overflow-hidden flex-1 min-h-0">
               <div className={`flex-1 p-8 md:p-12 overflow-y-auto custom-scrollbar ${activeTab === 'info' ? 'block' : 'hidden md:block'}`}>
@@ -533,131 +550,174 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-4 pt-8 border-t border-slate-100">
-                  <div className="group">
-                    <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.appName}</label>
-                    <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
-                      <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)}>
-                        <option value="member">{t.member}</option><option value="ob">{t.ob}</option><option value="guest">{t.guest}</option>
-                      </select>
+                  {/* 신청 안 받는 행사면 신청 UI를 아예 안 보여줌 */}
+                  {selectedEvent?.allow_registration === false ? (
+                    <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl text-center">
+                      <p className="font-bold text-slate-500">참가 신청을 받지 않는 일정입니다.</p>
                     </div>
-                  </div>
-                  {userType === "guest" && (
-                    <input type="password" placeholder={t.guestPw} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
-                  )}
-                  {selectedEvent?.type === 'normal' && (
-                    <div className="space-y-2 pt-2">
-                      <label className="block text-xs font-bold text-slate-400 ml-1 uppercase">Participation Type</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        <button onClick={() => setParticipationType("full")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'full' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Full (19-22)</button>
-                        <button onClick={() => setParticipationType("partial_7_9")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_7_9' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (19-21)</button>
-                        <button onClick={() => setParticipationType("partial_8_10")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_8_10' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (20-22)</button>
+                  ) : (
+                    <>
+                      <div className="group">
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.appName}</label>
+                        <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} />
                       </div>
-                    </div>
-                  )}
-                  {selectedEvent?.type === 'lesson' && (
-                    <div className="space-y-2 pt-2">
-                      <label className="block text-xs font-bold text-slate-400 ml-1">{t.lessonChoice}</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => setLessonChoice("tue_thu")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'tue_thu' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.tueThu}</button>
-                        <button onClick={() => setLessonChoice("sat")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'sat' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.sat}</button>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
+                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)}>
+                            <option value="member">{t.member}</option><option value="ob">{t.ob}</option><option value="guest">{t.guest}</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {selectedEvent?.has_afterparty && (
-                    <div className="space-y-2 pt-2">
-                      <label className="block text-xs font-bold text-slate-400 ml-1">{t.afterparty}</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => setAfterpartyJoin(true)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === true ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-slate-100 text-slate-400'}`}>{t.join}</button>
-                        <button onClick={() => setAfterpartyJoin(false)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === false ? 'border-slate-300 bg-slate-50 text-slate-600' : 'border-slate-100 text-slate-400'}`}>{t.decline}</button>
-                      </div>
-                    </div>
-                  )}
-                  {/* 🔥 핸들러 변경 */}
-                  <button disabled={status.disabled} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
-                    {status.text}
-                  </button>
-                </div>
-              </div>
-
-              <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl font-black text-slate-900">{t.listTab}</h3>
-                  <span className="bg-white px-3 py-1 rounded-full text-blue-600 text-xs font-black shadow-sm border border-slate-200">
-                    {applicants.filter(a => a.user_type !== 'ob').length} / {selectedEvent?.max_capacity}
-                  </span>
-                </div>
-                <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar min-h-0">
-                {applicants.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-[11px] font-medium">{t.noApplicants}</p></div>
-                ) : (
-                  <div className="divide-y divide-white/50 border-t border-slate-100">
-                    {(() => {
-                      const obApps = applicants.filter(a => a.user_type === 'ob');
-                      const regApps = applicants.filter(a => a.user_type !== 'ob');
-                      
-                      const displayApps = [
-                        ...obApps.map(app => ({ 
-                          ...app, 
-                          displayIndex: '-', 
-                          isWaitlisted: false, 
-                          waitlistNumber: 0 
-                        })),
-                        ...regApps.map((app, i) => {
-                          const isWaitlisted = selectedEvent?.max_capacity && i >= selectedEvent.max_capacity;
-                          const waitlistNumber = isWaitlisted ? i - selectedEvent.max_capacity + 1 : 0;
-                          return { 
-                            ...app, 
-                            displayIndex: String(i + 1).padStart(2, '0'), 
-                            isWaitlisted, 
-                            waitlistNumber 
-                          };
-                        })
-                      ];
-
-                      return displayApps.map((app, i) => {
-                        let rowColor = "bg-white hover:bg-slate-50 transition-colors"; 
-                        let badgeColor = "bg-slate-100 text-slate-400";
-                        if (app.user_type === 'guest') { rowColor = "bg-emerald-50/80 hover:bg-emerald-100/80 transition-colors"; badgeColor = "bg-emerald-200 text-emerald-700"; } 
-                        else if (app.user_type === 'ob') { rowColor = "bg-blue-50/80 hover:bg-blue-100/80 transition-colors"; badgeColor = "bg-blue-600/20 text-blue-700"; } 
-                        else if (app.participation_type !== 'full') { rowColor = "bg-amber-50/80 hover:bg-amber-100/80 transition-colors"; badgeColor = "bg-amber-200 text-amber-700"; }
-                        return (
-                          <div key={app.id || i} className={`flex justify-between items-center py-2 px-3 group flex-wrap md:flex-nowrap ${rowColor} ${app.isWaitlisted ? 'opacity-40 grayscale hover:opacity-60' : ''}`}>
-                            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden mr-2">
-                              <span className="text-[10px] font-black opacity-30 w-4 flex-shrink-0 text-center">{app.displayIndex}</span>
-                              <div className="flex items-center gap-1.5 min-w-0 truncate">
-                                <span className="font-bold text-slate-800 text-[12px] truncate leading-none">{app.user_name}</span>
-                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' || app.user_type === '회장' || app.user_type === '부회장' || app.user_type === '임원진' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
-                                {app.isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">{t.waitlist} {app.waitlistNumber}</span>}
-                                {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
-                                {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
-                                {app.afterparty_join && <span className="text-[10px]">🍻</span>}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">
-                              {app.participation_type !== 'full' && (
-                                <span className="text-[8px] font-black bg-white/60 text-amber-600 px-1 py-0.5 rounded border border-amber-200 leading-none">
-                                  {app.participation_type === 'partial_7_9' ? '19-21' : '20-22'}
-                                </span>
-                              )}
-                              <div className="flex items-baseline gap-1 tabular-nums">
-                                <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
-                                <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-                              </div>
-                            </div>
+                      {userType === "guest" && (
+                        <input type="password" placeholder={t.guestPw} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
+                      )}
+                      {selectedEvent?.type === 'normal' && (
+                        <div className="space-y-2 pt-2">
+                          <label className="block text-xs font-bold text-slate-400 ml-1 uppercase">Participation Type</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button onClick={() => setParticipationType("full")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'full' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Full (19-22)</button>
+                            <button onClick={() => setParticipationType("partial_7_9")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_7_9' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (19-21)</button>
+                            <button onClick={() => setParticipationType("partial_8_10")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_8_10' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (20-22)</button>
                           </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                )}
+                        </div>
+                      )}
+                      {selectedEvent?.type === 'lesson' && (
+                        <div className="space-y-2 pt-2">
+                          <label className="block text-xs font-bold text-slate-400 ml-1">{t.lessonChoice}</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => setLessonChoice("tue_thu")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'tue_thu' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.tueThu}</button>
+                            <button onClick={() => setLessonChoice("sat")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'sat' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.sat}</button>
+                          </div>
+                        </div>
+                      )}
+                      {selectedEvent?.has_afterparty && (
+                        <div className="space-y-2 pt-2">
+                          <label className="block text-xs font-bold text-slate-400 ml-1">{t.afterparty}</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => setAfterpartyJoin(true)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === true ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-slate-100 text-slate-400'}`}>{t.join}</button>
+                            <button onClick={() => setAfterpartyJoin(false)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === false ? 'border-slate-300 bg-slate-50 text-slate-600' : 'border-slate-100 text-slate-400'}`}>{t.decline}</button>
+                          </div>
+                        </div>
+                      )}
+                      <button disabled={status.disabled} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
+                        {status.text}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
+              {selectedEvent?.allow_registration !== false && (
+                <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-xl font-black text-slate-900">{t.listTab}</h3>
+                    <span className="bg-white px-3 py-1 rounded-full text-blue-600 text-xs font-black shadow-sm border border-slate-200">
+                      {applicants.filter(a => a.user_type !== 'ob').length} / {selectedEvent?.max_capacity}
+                    </span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar min-h-0">
+                  {applicants.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-[11px] font-medium">{t.noApplicants}</p></div>
+                  ) : (
+                    <div className="divide-y divide-white/50 border-t border-slate-100">
+                      {(() => {
+                        const obApps = applicants.filter(a => a.user_type === 'ob');
+                        const regApps = applicants.filter(a => a.user_type !== 'ob');
+                        
+                        const displayApps = [
+                          ...obApps.map(app => ({ 
+                            ...app, 
+                            displayIndex: '-', 
+                            isWaitlisted: false, 
+                            waitlistNumber: 0 
+                          })),
+                          ...regApps.map((app, i) => {
+                            const isWaitlisted = selectedEvent?.max_capacity && i >= selectedEvent.max_capacity;
+                            const waitlistNumber = isWaitlisted ? i - selectedEvent.max_capacity + 1 : 0;
+                            return { 
+                              ...app, 
+                              displayIndex: String(i + 1).padStart(2, '0'), 
+                              isWaitlisted, 
+                              waitlistNumber 
+                            };
+                          })
+                        ];
+
+                        return displayApps.map((app, i) => {
+                          let rowColor = "bg-white hover:bg-slate-50 transition-colors"; 
+                          let badgeColor = "bg-slate-100 text-slate-400";
+                          if (app.user_type === 'guest') { rowColor = "bg-emerald-50/80 hover:bg-emerald-100/80 transition-colors"; badgeColor = "bg-emerald-200 text-emerald-700"; } 
+                          else if (app.user_type === 'ob') { rowColor = "bg-blue-50/80 hover:bg-blue-100/80 transition-colors"; badgeColor = "bg-blue-600/20 text-blue-700"; } 
+                          else if (app.participation_type !== 'full') { rowColor = "bg-amber-50/80 hover:bg-amber-100/80 transition-colors"; badgeColor = "bg-amber-200 text-amber-700"; }
+                          return (
+                            <div key={app.id || i} className={`flex justify-between items-center py-2 px-3 group flex-wrap md:flex-nowrap ${rowColor} ${app.isWaitlisted ? 'opacity-40 grayscale hover:opacity-60' : ''}`}>
+                              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden mr-2">
+                                <span className="text-[10px] font-black opacity-30 w-4 flex-shrink-0 text-center">{app.displayIndex}</span>
+                                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                                  <span className="font-bold text-slate-800 text-[12px] truncate leading-none">{app.user_name}</span>
+                                  <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase leading-none flex-shrink-0 scale-90 ${badgeColor}`}>{app.user_type === 'member' || app.user_type === '회장' || app.user_type === '부회장' || app.user_type === '임원진' ? t.member : app.user_type === 'ob' ? t.ob : t.guest}</span>
+                                  {app.isWaitlisted && <span className="text-[8px] font-bold bg-slate-700 text-white px-1.5 py-0.5 rounded leading-none flex-shrink-0">{t.waitlist} {app.waitlistNumber}</span>}
+                                  {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
+                                  {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
+                                  {app.afterparty_join && <span className="text-[10px]">🍻</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">
+                                {app.participation_type !== 'full' && (
+                                  <span className="text-[8px] font-black bg-white/60 text-amber-600 px-1 py-0.5 rounded border border-amber-200 leading-none">
+                                    {app.participation_type === 'partial_7_9' ? '19-21' : '20-22'}
+                                  </span>
+                                )}
+                                <div className="flex items-baseline gap-1 tabular-nums">
+                                  <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
+                                  <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  )}
+                  </div>
+                </div>
+              )}
             </div>
             <button onClick={resetAndCloseModal} className="hidden md:block w-full py-6 bg-white text-slate-400 text-xs font-bold border-t border-slate-100 hover:text-slate-600 hover:bg-slate-50 transition-all uppercase tracking-widest">{t.close}</button>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 게스트 결제 모달 (두 줄 스타일) */}
+      {isGuestPaymentModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setIsGuestPaymentModalOpen(false)}>
+          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-2xl mb-4">💸</div>
+            <h3 className="font-black text-xl text-slate-900 mb-2">{t.guestPaymentTitle}</h3>
+            <div className="text-sm text-slate-600 text-center mb-6 w-full">
+              <p className="leading-relaxed mb-4">{t.guestPaymentDesc}</p>
+              
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText("1234-56-7890123"); // 👈 실제 계좌번호(숫자)로 변경
+                  alert("계좌번호가 복사되었습니다! 📋");
+                }}
+                className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-100 hover:bg-slate-200 px-4 py-3 rounded-xl transition-all active:scale-95 group"
+                title="클릭해서 복사하기"
+              >
+                <div className="flex-1 flex flex-col items-center justify-center leading-tight">
+                  <span className="text-[13px] md:text-sm">카카오뱅크 1234-56-7890123</span>
+                  <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: 홍길동</span>
+                </div>
+                <span className="text-slate-400 group-hover:text-blue-500 transition-colors text-lg flex-shrink-0">📋</span>
+              </button>
+              <p className="text-[10px] text-slate-400 mt-2">박스를 클릭하면 계좌번호가 복사됩니다.</p>
+            </div>
+
+            <div className="flex gap-2 w-full">
+              <button onClick={() => setIsGuestPaymentModalOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
+              <button onClick={executeApplication} className="flex-1 py-3.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/30">{t.paymentCompleted}</button>
+            </div>
           </div>
         </div>
       )}
@@ -676,38 +736,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🔥 게스트 결제 모달 추가 */}
-      {isGuestPaymentModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setIsGuestPaymentModalOpen(false)}>
-          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-2xl mb-4">💸</div>
-            <h3 className="font-black text-xl text-slate-900 mb-2">{t.guestPaymentTitle}</h3>
-            <div className="text-sm text-slate-600 text-center mb-6 w-full">
-              <p className="leading-relaxed mb-4">{t.guestPaymentDesc}</p>
-              
-              {/* 👇 클릭 시 계좌번호가 복사되는 버튼 👇 */}
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText("3333365925467"); // 👈 여기에 복사될 실제 계좌번호(숫자만)를 넣어주세요!
-                  alert("계좌번호가 복사되었습니다! 📋");
-                }}
-                className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-100 hover:bg-slate-200 px-4 py-3 rounded-xl transition-all active:scale-95 group"
-                title="클릭해서 복사하기"
-              >
-                <span className="text-[13px] md:text-sm">카카오뱅크 3333365925467</span>
-                <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: 안진식</span><span className="text-slate-400 group-hover:text-blue-500 transition-colors">📋</span>
-              </button>
-              <p className="text-[10px] text-slate-400 mt-2">박스를 클릭하면 계좌번호가 복사됩니다.</p>
-            </div>
-
-            <div className="flex gap-2 w-full">
-              <button onClick={() => setIsGuestPaymentModalOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
-              <button onClick={executeApplication} className="flex-1 py-3.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/30">{t.paymentCompleted}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <footer className="mt-auto pt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
         <p>© 2026 SNUMINTON. | Developed by 이주원</p>
       </footer>
@@ -715,4 +743,3 @@ export default function Home() {
     </main>
   );
 }
-
