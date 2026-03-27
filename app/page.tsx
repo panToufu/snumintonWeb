@@ -11,7 +11,7 @@ const dict = {
   ko: {
     ongoing: "📌 진행 중인 투표 및 행사",
     lesson: "정기 레슨",
-    special: "행사", // 🔥 '특별 행사'에서 '행사'로 수정
+    special: "행사", 
     date: "일시:",
     applyView: "신청/보기",
     suggestion: "건의함",
@@ -24,7 +24,7 @@ const dict = {
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
-    attendanceAuthDesc: "출석부를 보려면 등록된 부원 이름을 입력해주세요.",
+    attendanceAuthDesc: "출석부를 보려면 등록된 부원/OB 이름을 한 번 입력해주세요.",
     attendanceAuthPlaceholder: "내 이름 입력",
     close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
@@ -52,7 +52,7 @@ const dict = {
     lessonChoice: "레슨 요일 선택",
     tueThu: "화/목 레슨",
     sat: "토요 레슨",
-    afterparty: "뒷풀이 참석 여부 (필수)",
+    afterparty: "뒷풀이 참석 여부",
     join: "참석 🍻",
     decline: "불참",
     applyBtn: "신청하기",
@@ -76,7 +76,7 @@ const dict = {
   en: {
     ongoing: "📌 Ongoing Polls & Events",
     lesson: "Regular Lesson",
-    special: "Event", // 🔥 Special Event -> Event
+    special: "Event",
     date: "Date:",
     applyView: "Apply / View",
     suggestion: "Suggestion Box",
@@ -117,7 +117,7 @@ const dict = {
     lessonChoice: "Select Lesson Day",
     tueThu: "Tue/Thu Lesson",
     sat: "Sat Lesson",
-    afterparty: "Afterparty (Required)",
+    afterparty: "Afterparty",
     join: "Join 🍻",
     decline: "Decline",
     applyBtn: "Apply Now",
@@ -174,8 +174,18 @@ export default function Home() {
   const [isAttendanceAuthenticated, setIsAttendanceAuthenticated] = useState(false);
 
   const [executives, setExecutives] = useState<any[]>([]);
-  
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
+
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    if (isModalOpen) {
+      const timer = setInterval(() => {
+        setCurrentTime(new Date());
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isModalOpen]);
 
   useEffect(() => {
     const isAuth = localStorage.getItem("snuminton_attendance_auth");
@@ -248,17 +258,15 @@ export default function Home() {
     setMonthlyRanking(ranking);
   };
 
-  // 🔥 관리자가 지정한 오픈 시간을 우선 적용하도록 로직 수정
+  // 🔥 [핵심] 수강신청 타이머 오차 방지를 위해 밀리초(.getTime()) 단위로 정확하게 비교합니다.
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
-    const now = new Date();
+    const now = currentTime;
     let openTime;
 
-    // 만약 신청 시작 시간이 지정되어 있다면 그것을 무조건 우선 사용
     if (selectedEvent.registration_start_at) {
       openTime = new Date(selectedEvent.registration_start_at);
     } else {
-      // 지정 안되어있으면 기존의 D-2, D-1 룰 사용
       const eventStart = new Date(selectedEvent.start);
       openTime = new Date(eventStart);
       if (userType === "member" || userType === "ob") {
@@ -268,7 +276,8 @@ export default function Home() {
       }
     }
 
-    const isOpen = now >= openTime;
+    // 객체 비교 오차를 막기 위해 getTime()을 사용합니다.
+    const isOpen = now.getTime() >= openTime.getTime();
     const timeFormatOptions: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" };
     const timeString = openTime.toLocaleString(lang === "ko" ? "ko-KR" : "en-US", timeFormatOptions);
     
@@ -381,8 +390,8 @@ export default function Home() {
     setGuestPw("");
   };
 
-  // 🔥 allow_registration이 false인(신청을 받지 않는) 행사는 메인 리스트에서 숨기도록 조건 추가
-  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
+  // 🔥 [핵심] 신청을 받는 행사(allow_registration === true)만 아래 리스트에 뜨도록 필터링 규칙 강화
+  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration === true);
   const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
 
   return (
@@ -503,8 +512,7 @@ export default function Home() {
           <div className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex md:hidden border-b border-slate-100 bg-slate-50/50">
               <button onClick={() => setActiveTab("info")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "info" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.infoTab}</button>
-              {/* 🔥 신청을 받는 경우에만 신청 현황 탭 버튼 표시 */}
-              {selectedEvent?.allow_registration !== false && (
+              {selectedEvent?.allow_registration === true && (
                 <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.filter(a => a.user_type !== 'ob').length}</span></button>
               )}
             </div>
@@ -518,7 +526,9 @@ export default function Home() {
                   <div className="grid grid-cols-1 gap-3 text-slate-600">
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { dateStyle: 'full', timeStyle: 'short' })}</div>
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📍</span>{selectedEvent?.location || t.unspecified}</div>
-                    <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
+                    {selectedEvent?.allow_registration === true && (
+                      <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
+                    )}
                   </div>
 
                   {selectedEvent?.participating_execs && selectedEvent.participating_execs.length > 0 && (
@@ -550,8 +560,8 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-4 pt-8 border-t border-slate-100">
-                  {/* 신청 안 받는 행사면 신청 UI를 아예 안 보여줌 */}
-                  {selectedEvent?.allow_registration === false ? (
+                  {/* 🔥 참가 신청을 안 받는 행사일 경우 폼을 숨기고 안내 텍스트 띄움 */}
+                  {selectedEvent?.allow_registration !== true ? (
                     <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl text-center">
                       <p className="font-bold text-slate-500">참가 신청을 받지 않는 일정입니다.</p>
                     </div>
@@ -607,7 +617,9 @@ export default function Home() {
                   )}
                 </div>
               </div>
-              {selectedEvent?.allow_registration !== false && (
+
+              {/* 🔥 참가 신청을 받는 경우에만 우측 신청 명단을 보여줌 */}
+              {selectedEvent?.allow_registration === true && (
                 <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
                   <div className="flex items-center justify-between mb-8">
                     <h3 className="text-xl font-black text-slate-900">{t.listTab}</h3>
@@ -688,7 +700,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🔥 게스트 결제 모달 (두 줄 스타일) */}
       {isGuestPaymentModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setIsGuestPaymentModalOpen(false)}>
           <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col items-center animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
@@ -699,7 +710,7 @@ export default function Home() {
               
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText("1234-56-7890123"); // 👈 실제 계좌번호(숫자)로 변경
+                  navigator.clipboard.writeText("1234-56-7890123"); 
                   alert("계좌번호가 복사되었습니다! 📋");
                 }}
                 className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-100 hover:bg-slate-200 px-4 py-3 rounded-xl transition-all active:scale-95 group"
