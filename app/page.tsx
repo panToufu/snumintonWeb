@@ -24,7 +24,7 @@ const dict = {
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
-    attendanceAuthDesc: "출석부를 보려면 등록된 부원/OB 이름을 한 번 입력해주세요.",
+    attendanceAuthDesc: "출석부를 보려면 등록된 부원 이름을 입력해주세요.",
     attendanceAuthPlaceholder: "내 이름 입력",
     close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
@@ -63,11 +63,11 @@ const dict = {
     alertName: "성함을 입력해주세요!",
     alertGuestPw: "게스트 공통 비밀번호가 일치하지 않습니다. 동아리원에게 문의해주세요!",
     alertWait: "까지 조금만 기다려주세요!",
-    alertNotRegistered: "등록되지 않은 부원/OB 이름입니다. 확인해주세요!",
+    alertNotRegistered: "등록되지 않은 이름입니다. 확인해주세요!",
     alertSuccess: "님, 신청이 완료되었습니다! 🏸",
     alertError: "신청 중 오류가 발생했습니다: ",
     alertAdminFail: "비밀번호가 일치하지 않습니다.",
-    participatingExecs: "오늘 참여하는 운영진",
+    participatingExecs: "참여 임원진",
     noEvents: "진행 중인 투표 및 행사가 없습니다.",
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
@@ -106,7 +106,7 @@ const dict = {
     listTab: "Applicant List",
     unspecified: "Unspecified",
     capacity: "Capacity",
-    persons: "people",
+    persons: "",
     appName: "Applicant Name",
     namePlaceholder: "Enter your name",
     memberType: "Membership",
@@ -132,7 +132,7 @@ const dict = {
     alertSuccess: ", your application is complete! 🏸",
     alertError: "Error occurred during application: ",
     alertAdminFail: "Incorrect password.",
-    participatingExecs: "Participating Executives",
+    participatingExecs: "Participating Managers",
     noEvents: "There are no ongoing polls or events.",
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
@@ -258,7 +258,6 @@ export default function Home() {
     setMonthlyRanking(ranking);
   };
 
-  // 🔥 [핵심] 수강신청 타이머 오차 방지를 위해 밀리초(.getTime()) 단위로 정확하게 비교합니다.
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
     const now = currentTime;
@@ -276,7 +275,6 @@ export default function Home() {
       }
     }
 
-    // 객체 비교 오차를 막기 위해 getTime()을 사용합니다.
     const isOpen = now.getTime() >= openTime.getTime();
     const timeFormatOptions: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" };
     const timeString = openTime.toLocaleString(lang === "ko" ? "ko-KR" : "en-US", timeFormatOptions);
@@ -358,6 +356,16 @@ export default function Home() {
       finalUserName = matchedMember.name; 
     }
 
+    // 🔥 [추가된 로직] 부원(member)인 경우에만 중복 신청 검사 수행
+    if (userType === "member") {
+      const isAlreadyApplied = applicants.some(
+        (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
+      );
+      if (isAlreadyApplied) {
+        return alert(`이미 신청된 이름(${finalUserName})입니다. 명단을 다시 확인해주세요!`);
+      }
+    }
+
     const { error } = await supabase.from("applications").insert([{
       event_id: selectedEvent.id, 
       user_name: finalUserName, 
@@ -390,8 +398,7 @@ export default function Home() {
     setGuestPw("");
   };
 
-  // 🔥 [핵심] 신청을 받는 행사(allow_registration === true)만 아래 리스트에 뜨도록 필터링 규칙 강화
-  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration === true);
+  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
   const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
 
   return (
@@ -512,7 +519,7 @@ export default function Home() {
           <div className="bg-white w-full max-w-5xl rounded-t-[2rem] md:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-[85vh] md:h-[80vh] border border-white/20 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex md:hidden border-b border-slate-100 bg-slate-50/50">
               <button onClick={() => setActiveTab("info")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "info" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.infoTab}</button>
-              {selectedEvent?.allow_registration === true && (
+              {selectedEvent?.allow_registration !== false && (
                 <button onClick={() => setActiveTab("list")} className={`flex-1 py-5 text-sm font-bold transition-all ${activeTab === "list" ? "text-blue-600 border-b-2 border-blue-600 bg-white" : "text-slate-400"}`}>{t.listTab} <span className="ml-1 opacity-60">{applicants.filter(a => a.user_type !== 'ob').length}</span></button>
               )}
             </div>
@@ -526,7 +533,7 @@ export default function Home() {
                   <div className="grid grid-cols-1 gap-3 text-slate-600">
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { dateStyle: 'full', timeStyle: 'short' })}</div>
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📍</span>{selectedEvent?.location || t.unspecified}</div>
-                    {selectedEvent?.allow_registration === true && (
+                    {selectedEvent?.allow_registration !== false && (
                       <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
                     )}
                   </div>
@@ -560,8 +567,7 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-4 pt-8 border-t border-slate-100">
-                  {/* 🔥 참가 신청을 안 받는 행사일 경우 폼을 숨기고 안내 텍스트 띄움 */}
-                  {selectedEvent?.allow_registration !== true ? (
+                  {selectedEvent?.allow_registration === false ? (
                     <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl text-center">
                       <p className="font-bold text-slate-500">참가 신청을 받지 않는 일정입니다.</p>
                     </div>
@@ -618,8 +624,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 🔥 참가 신청을 받는 경우에만 우측 신청 명단을 보여줌 */}
-              {selectedEvent?.allow_registration === true && (
+              {selectedEvent?.allow_registration !== false && (
                 <div className={`w-full md:w-[400px] bg-slate-50 p-8 md:p-12 border-l border-slate-100 flex-col h-full overflow-hidden ${activeTab === 'list' ? 'flex' : 'hidden md:flex'}`}>
                   <div className="flex items-center justify-between mb-8">
                     <h3 className="text-xl font-black text-slate-900">{t.listTab}</h3>
