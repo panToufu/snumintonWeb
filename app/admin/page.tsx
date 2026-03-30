@@ -36,6 +36,7 @@ export default function AdminPage() {
   const [regDates, setRegDates] = useState<string[]>([]); 
   const [regLocation, setRegLocation] = useState("구체");
   const [regCapacity, setRegCapacity] = useState(50);
+  const [regAllowGuests, setRegAllowGuests] = useState(true);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editEventId, setEditEventId] = useState("");
@@ -44,11 +45,11 @@ export default function AdminPage() {
   const [editCapacity, setEditCapacity] = useState(50);
   const [editCountAttendance, setEditCountAttendance] = useState(true);
   const [editExecs, setEditExecs] = useState<string[]>([]);
+  const [editAllowGuests, setEditAllowGuests] = useState(true);
 
   const [isEditAppModalOpen, setIsEditAppModalOpen] = useState(false);
   const [editAppTarget, setEditAppTarget] = useState<any>(null);
 
-  // 🔥 행사 등록 상태 
   const [spEventTitle, setSpEventTitle] = useState("");
   const [spEventStartDate, setSpEventStartDate] = useState(""); 
   const [spEventEndDate, setSpEventEndDate] = useState("");     
@@ -56,7 +57,7 @@ export default function AdminPage() {
   const [spEventCapacity, setSpEventCapacity] = useState(50);
   const [spEventAfterparty, setSpEventAfterparty] = useState(false);
   const [spEventAllowRegistration, setSpEventAllowRegistration] = useState(true);
-  const [spEventRegistrationStart, setSpEventRegistrationStart] = useState(""); // 🔥 신청 시작 시간 추가
+  const [spEventRegistrationStart, setSpEventRegistrationStart] = useState(""); 
 
   const executives = members
     .filter(m => ['회장', '부회장', '임원진'].includes(m.user_type))
@@ -140,6 +141,7 @@ export default function AdminPage() {
     setEditCapacity(ev.extendedProps.max_capacity || 50); 
     setEditCountAttendance(ev.extendedProps.is_attendance_counted ?? true);
     setEditExecs(ev.extendedProps.participating_execs || []);
+    setEditAllowGuests(ev.extendedProps.allow_guests ?? true); 
     setIsEditModalOpen(true);
   };
 
@@ -149,7 +151,8 @@ export default function AdminPage() {
       location: editLocation, 
       max_capacity: editCapacity, 
       is_attendance_counted: editCountAttendance,
-      participating_execs: editExecs 
+      participating_execs: editExecs,
+      allow_guests: editAllowGuests
     }).eq("id", editEventId);
     
     if (error) alert("수정 중 오류가 발생했습니다: " + error.message);
@@ -273,19 +276,17 @@ export default function AdminPage() {
       const endAt = new Date(`${dateStr}T22:00:00+09:00`).toISOString();
 
       return { 
-        title: "정기운동", type: "normal", 
-        start_at: startAt, end_at: endAt, 
+        title: "정기운동", type: "normal", start_at: startAt, end_at: endAt, 
         location: regLocation, max_capacity: regCapacity, 
-        participating_execs: [], allow_registration: true, color: '#3b82f6'
+        participating_execs: [], allow_registration: true, color: '#3b82f6',
+        allow_guests: regAllowGuests 
       }; 
     });
-    
     const { error } = await supabase.from("events").insert(payload);
     if (error) alert("등록 중 오류가 발생했습니다: " + error.message);
     else { alert(`${regDates.length}개 등록 완료!`); fetchEvents(); setAdminTab("calendar"); } 
   };
 
-  // 🔥 행사 등록 로직 (신청 시작 시간 포함)
   const handleRegisterSpecialEvent = async () => {
     if (!spEventTitle.trim()) return alert("행사 제목을 입력해주세요.");
     if (!spEventStartDate || !spEventEndDate) return alert("행사의 시작 시간과 종료 시간을 모두 설정해주세요.");
@@ -308,8 +309,9 @@ export default function AdminPage() {
       is_attendance_counted: false, 
       participating_execs: [],
       allow_registration: spEventAllowRegistration,
-      registration_start_at: regStartAt, // 🔥 신청 오픈 시간 DB 저장
-      color: '#ec4899' // 🔥 핑크색 무조건 고정
+      registration_start_at: regStartAt, 
+      color: '#ec4899', 
+      allow_guests: false
     };
     
     const { error } = await supabase.from("events").insert([payload]);
@@ -349,6 +351,8 @@ export default function AdminPage() {
   const attendanceDisplayList = applicants.filter(app => app.user_type !== 'ob' && app.user_type !== 'guest');
   const guestFeeList = applicants.filter(app => app.user_type === 'guest');
   const absenceFeeList = applicants.filter(app => app.attendance_status === 'absent' && app.user_type !== 'guest');
+  // 🔥 출석 체크 하단에 띄워줄 OB와 게스트 전체 명단
+  const obGuestList = applicants.filter(app => app.user_type === 'ob' || app.user_type === 'guest');
 
   return (
     <div className="min-h-screen bg-slate-50 p-2 md:p-8">
@@ -407,7 +411,8 @@ export default function AdminPage() {
                       </div>
                       <span className="text-xs md:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 md:px-3 py-1.5 rounded-xl shadow-sm">출석관리 {attendanceDisplayList.length}명</span>
                     </div>
-                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm mb-6">
                       {attendanceDisplayList.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">출석 체크할 부원이 없습니다.</div> : attendanceDisplayList.map((app, i) => {
                           const status = app.attendance_status || 'none';
                           
@@ -461,6 +466,36 @@ export default function AdminPage() {
                           );
                         })}
                     </div>
+
+                    {/* 🔥 출석 통계에는 안 들어가지만, 신청 정보 수정 및 삭제를 위해 OB와 게스트를 띄워줌 */}
+                    {obGuestList.length > 0 && (
+                      <div className="mt-8">
+                        <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
+                          <span>🤝 OB & 게스트 신청자</span>
+                          <span className="bg-slate-200 text-slate-600 text-[10px] px-2 py-0.5 rounded-full">{obGuestList.length}명</span>
+                        </h3>
+                        <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                          {obGuestList.map((app) => (
+                            <div key={app.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-3 md:p-3.5 hover:bg-slate-50 transition-colors gap-2 md:gap-0">
+                              <div className="flex items-center gap-2 md:gap-3 min-w-0 w-full md:w-auto">
+                                <span className="text-[10px] md:text-xs font-black text-slate-400 w-4 md:w-5">-</span>
+                                <span className="font-bold text-slate-800 text-xs md:text-sm truncate">{app.user_name}</span>
+                                <span className={`text-[8px] md:text-[10px] px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${app.user_type === 'guest' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>
+                                  {app.user_type === 'ob' ? 'OB' : '게스트'}
+                                </span>
+                                {/* 🔥 게스트일 경우 연락처 표시 */}
+                                {app.phone_number && <span className="text-[10px] font-medium text-slate-500 tracking-wide bg-slate-100 px-1.5 py-0.5 rounded">{app.phone_number}</span>}
+                                {app.participation_type !== 'full' && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{app.participation_type === 'partial_7_9' ? '부분참(19-21)' : '부분참(20-22)'}</span>}
+                              </div>
+                              <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
+                                <button onClick={() => { setEditAppTarget(app); setIsEditAppModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 정보 수정">✏️</button>
+                                <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -681,6 +716,12 @@ export default function AdminPage() {
                       <input type="number" value={regCapacity} onChange={(e) => setRegCapacity(Number(e.target.value))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-purple-400 font-bold text-sm" />
                     </div>
                   </div>
+                  <div className="flex items-center justify-between mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setRegAllowGuests(!regAllowGuests)}>
+                    <div className="font-bold text-sm text-slate-800">게스트 신청 허용</div>
+                    <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${regAllowGuests ? 'bg-emerald-400' : 'bg-slate-300'}`}>
+                      <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${regAllowGuests ? 'left-6' : 'left-1'}`} />
+                    </div>
+                  </div>
                 </div>
                 <div className="bg-slate-900 p-5 md:p-6 rounded-3xl shadow-xl text-white flex flex-col justify-center items-center text-center">
                   <span className="text-slate-400 text-xs md:text-sm font-bold mb-1 md:mb-2">선택된 날짜</span>
@@ -691,9 +732,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ======================================= */}
-          {/* 🎈 행사 등록 탭 (롤백 + 신청 시간 추가) */}
-          {/* ======================================= */}
           {adminTab === "special" && (
             <div className="w-full p-4 md:p-8 overflow-y-auto bg-slate-50 flex justify-center items-start">
               <div className="w-full max-w-2xl bg-white p-6 md:p-10 rounded-3xl shadow-sm border border-slate-200">
@@ -723,7 +761,6 @@ export default function AdminPage() {
                     <input type="text" value={spEventLocation} onChange={(e) => setSpEventLocation(e.target.value)} placeholder="예: 서울대학교 체육관" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                   </div>
 
-                  {/* 🔥 참가 신청 받기 토글 */}
                   <div className="flex items-center justify-between p-5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mt-4 hover:border-pink-300 transition-colors" onClick={() => setSpEventAllowRegistration(!spEventAllowRegistration)}>
                     <div>
                       <div className="font-bold text-sm text-slate-800">✅ 참가 신청 받기</div>
@@ -734,11 +771,10 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* 참가 신청을 받을 때만 정원, 뒤풀이 옵션, 신청 시작 시간 설정창을 보여줌 */}
                   {spEventAllowRegistration && (
                     <div className="space-y-6 pt-2">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 참가 신청 시작 시간</label>
+                        <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 참가 신청 시작(오픈) 시간</label>
                         <input type="datetime-local" value={spEventRegistrationStart} onChange={(e) => setSpEventRegistrationStart(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                         <p className="text-[10px] text-slate-400 mt-1">설정한 시간 전에는 부원들이 신청 버튼을 누를 수 없습니다.</p>
                       </div>
@@ -771,9 +807,6 @@ export default function AdminPage() {
 
         </div>
 
-        {/* ========================================= */}
-        {/* 달력용 일정 수정 모달 */}
-        {/* ========================================= */}
         {isEditModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4" onClick={() => setIsEditModalOpen(false)}>
             <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-md border border-slate-100 flex flex-col gap-4 md:gap-5 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
@@ -808,10 +841,16 @@ export default function AdminPage() {
                 )}
               </div>
 
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditAllowGuests(!editAllowGuests)}>
+                <div><div className="font-bold text-xs md:text-sm text-slate-800">게스트 신청 허용</div></div>
+                <div className={`w-10 md:w-12 h-5 md:h-6 rounded-full transition-colors relative ${editAllowGuests ? 'bg-emerald-400' : 'bg-slate-300'}`}><div className={`w-3.5 h-3.5 md:w-4 md:h-4 bg-white rounded-full absolute top-[3px] md:top-1 transition-all ${editAllowGuests ? 'left-[22px] md:left-7' : 'left-1'}`} /></div>
+              </div>
+
               <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditCountAttendance(!editCountAttendance)}>
                 <div><div className="font-bold text-xs md:text-sm text-slate-800">출석부 통계 반영</div><div className="text-[9px] md:text-[10px] text-slate-500 mt-0.5">이 일정을 월별 출석 횟수에 포함합니다.</div></div>
                 <div className={`w-10 md:w-12 h-5 md:h-6 rounded-full transition-colors relative ${editCountAttendance ? 'bg-amber-400' : 'bg-slate-300'}`}><div className={`w-3.5 h-3.5 md:w-4 md:h-4 bg-white rounded-full absolute top-[3px] md:top-1 transition-all ${editCountAttendance ? 'left-[22px] md:left-7' : 'left-1'}`} /></div>
               </div>
+              
               <div className="flex gap-2 md:gap-3 mt-2 md:mt-4">
                 <button onClick={handleDeleteEvent} className="px-4 py-3 bg-red-50 text-red-500 font-bold text-sm rounded-xl hover:bg-red-100 transition-colors border border-red-100 whitespace-nowrap">🗑️ 삭제</button>
                 <button onClick={handleUpdateEvent} className="flex-1 py-3 bg-amber-400 text-amber-900 font-black text-sm rounded-xl hover:bg-amber-500 transition-colors shadow-lg shadow-amber-400/30">수정 저장</button>
@@ -820,9 +859,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ========================================= */}
-        {/* 개별 신청 정보 수정 팝업 모달 */}
-        {/* ========================================= */}
         {isEditAppModalOpen && editAppTarget && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4" onClick={() => setIsEditAppModalOpen(false)}>
             <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 flex flex-col gap-4 md:gap-5 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>

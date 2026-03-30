@@ -24,7 +24,7 @@ const dict = {
     checkAttendance: "출석 확인",
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
-    attendanceAuthDesc: "출석부를 보려면 등록된 부원 이름을 입력해주세요.",
+    attendanceAuthDesc: "출석부를 보려면 성함을 입력해주세요.",
     attendanceAuthPlaceholder: "내 이름 입력",
     close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
@@ -49,6 +49,8 @@ const dict = {
     ob: "OB",
     guest: "게스트",
     guestPw: "게스트 확인용 비밀번호",
+    phoneLabel: "연락처 (게스트 필수)",
+    phonePlaceholder: "010-XXXX-XXXX",
     lessonChoice: "레슨 요일 선택",
     tueThu: "화/목 레슨",
     sat: "토요 레슨",
@@ -61,7 +63,8 @@ const dict = {
     waitlist: "대기",
     noApplicants: "아직 신청자가 없습니다.",
     alertName: "성함을 입력해주세요!",
-    alertGuestPw: "게스트 공통 비밀번호가 일치하지 않습니다. 동아리원에게 문의해주세요!",
+    alertPhone: "게스트는 연락처를 필수로 입력해야 합니다!",
+    alertGuestPw: "게스트 공통 비밀번호가 일치하지 않습니다. 임원진에게 문의해주세요!",
     alertWait: "까지 조금만 기다려주세요!",
     alertNotRegistered: "등록되지 않은 이름입니다. 확인해주세요!",
     alertSuccess: "님, 신청이 완료되었습니다! 🏸",
@@ -114,6 +117,8 @@ const dict = {
     ob: "OB",
     guest: "Guest",
     guestPw: "Guest Password",
+    phoneLabel: "Phone Number (Required for Guests)",
+    phonePlaceholder: "010-XXXX-XXXX",
     lessonChoice: "Select Lesson Day",
     tueThu: "Tue/Thu Lesson",
     sat: "Sat Lesson",
@@ -126,6 +131,7 @@ const dict = {
     waitlist: "Waitlist",
     noApplicants: "No applicants yet.",
     alertName: "Please enter your name!",
+    alertPhone: "Phone number is required for guests!",
     alertGuestPw: "Incorrect guest password. Please ask a club member!",
     alertWait: "Please wait until it opens!",
     alertNotRegistered: "Name not found in the member list. Please check again!",
@@ -156,6 +162,7 @@ export default function Home() {
   const [userName, setUserName] = useState("");
   const [userType, setUserType] = useState("member");
   const [guestPw, setGuestPw] = useState("");
+  const [phoneNum, setPhoneNum] = useState(""); // 🔥 연락처 상태 추가
   const [participationType, setParticipationType] = useState("full");
   const [lessonChoice, setLessonChoice] = useState("tue_thu");
   const [afterpartyJoin, setAfterpartyJoin] = useState(false);
@@ -322,6 +329,7 @@ export default function Home() {
 
   const handleApplyClick = () => {
     if (!userName) return alert(t.alertName);
+    if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone); // 🔥 연락처 필수 검증
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
@@ -333,6 +341,13 @@ export default function Home() {
   };
 
   const executeApplication = async () => {
+    if (selectedEvent?.type === 'special' && userType !== 'member') {
+      return alert("행사는 부원만 신청 가능합니다.");
+    }
+    if (userType === 'guest' && selectedEvent?.allow_guests === false) {
+      return alert("해당 일정은 게스트 신청을 받지 않습니다.");
+    }
+
     let finalUserName = userName; 
 
     if (userType === "member" || userType === "ob") {
@@ -356,7 +371,6 @@ export default function Home() {
       finalUserName = matchedMember.name; 
     }
 
-    // 🔥 [추가된 로직] 부원(member)인 경우에만 중복 신청 검사 수행
     if (userType === "member") {
       const isAlreadyApplied = applicants.some(
         (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
@@ -371,6 +385,7 @@ export default function Home() {
       user_name: finalUserName, 
       user_type: userType,
       guest_password: userType === "guest" ? guestPw : null,
+      phone_number: userType === "guest" ? phoneNum : null, // 🔥 연락처 저장
       participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
       lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
       afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
@@ -380,7 +395,7 @@ export default function Home() {
     else {
       alert(`${finalUserName}${t.alertSuccess}`); 
       setIsGuestPaymentModalOpen(false); 
-      setUserName(""); setGuestPw(""); setParticipationType("full");
+      setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
       fetchApplicants(selectedEvent.id); setActiveTab("list"); 
     }
@@ -396,6 +411,8 @@ export default function Home() {
     setIsModalOpen(false);
     setUserName(""); 
     setGuestPw("");
+    setPhoneNum("");
+    setUserType("member");
   };
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
@@ -411,10 +428,22 @@ export default function Home() {
         <button onClick={() => setIsAdminAuthOpen(true)} className="text-2xl opacity-30 hover:opacity-100 transition-opacity cursor-pointer" title="Admin">⚙️</button>
       </div>
 
-      <h1 className="text-3xl font-black text-center my-8 text-blue-900 tracking-tight">SNUMINTON</h1>
+      <div className="flex items-center justify-center gap-3 my-8">
+        <img 
+          src="/logo.png" 
+          alt="Snuminton Logo" 
+          className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" 
+        />
+        <h1 
+          className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" 
+          style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}
+        >
+          SNUMINTON
+        </h1>
+      </div>
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
-        <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale={lang === "ko" ? "ko" : "en"} displayEventTime={false} eventClick={(info) => { const ev = info.event; setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }} />
+        <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale={lang === "ko" ? "ko" : "en"} displayEventTime={false} eventClick={(info) => { const ev = info.event; setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} />
       </div>
 
       <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
@@ -430,7 +459,7 @@ export default function Home() {
                     <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
                     <p className="text-xs text-slate-500 mt-1">{t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
                   </div>
-                  <button onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setIsModalOpen(true); }} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0">{t.applyView}</button>
+                  <button onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0">{t.applyView}</button>
                 </div>
               ))}
 
@@ -581,12 +610,27 @@ export default function Home() {
                         <div className="col-span-2">
                           <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
                           <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)}>
-                            <option value="member">{t.member}</option><option value="ob">{t.ob}</option><option value="guest">{t.guest}</option>
+                            <option value="member">{t.member}</option>
+                            {selectedEvent?.type !== 'special' && <option value="ob">{t.ob}</option>}
+                            {selectedEvent?.type !== 'special' && selectedEvent?.allow_guests !== false && <option value="guest">{t.guest}</option>}
                           </select>
+                          {selectedEvent?.type !== 'special' && selectedEvent?.allow_guests === false && (
+                            <p className="text-[11px] text-rose-500 mt-2 ml-1 font-bold">🚫 이 일정은 게스트 신청을 받지 않습니다.</p>
+                          )}
                         </div>
                       </div>
+                      {/* 🔥 게스트 선택 시 연락처 및 비밀번호 입력 */}
                       {userType === "guest" && (
-                        <input type="password" placeholder={t.guestPw} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.phoneLabel}</label>
+                            <input type="text" placeholder={t.phonePlaceholder} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.guestPw}</label>
+                            <input type="password" placeholder="비밀번호" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
+                          </div>
+                        </div>
                       )}
                       {selectedEvent?.type === 'normal' && (
                         <div className="space-y-2 pt-2">
@@ -722,8 +766,8 @@ export default function Home() {
                 title="클릭해서 복사하기"
               >
                 <div className="flex-1 flex flex-col items-center justify-center leading-tight">
-                  <span className="text-[13px] md:text-sm">카카오뱅크 1234-56-7890123</span>
-                  <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: 홍길동</span>
+                  <span className="text-[13px] md:text-sm">카카오뱅크 3333365925467</span>
+                  <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: 안진식</span>
                 </div>
                 <span className="text-slate-400 group-hover:text-blue-500 transition-colors text-lg flex-shrink-0">📋</span>
               </button>
