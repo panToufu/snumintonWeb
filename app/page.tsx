@@ -162,7 +162,7 @@ export default function Home() {
   const [userName, setUserName] = useState("");
   const [userType, setUserType] = useState("member");
   const [guestPw, setGuestPw] = useState("");
-  const [phoneNum, setPhoneNum] = useState(""); // 🔥 연락처 상태 추가
+  const [phoneNum, setPhoneNum] = useState(""); 
   const [participationType, setParticipationType] = useState("full");
   const [lessonChoice, setLessonChoice] = useState("tue_thu");
   const [afterpartyJoin, setAfterpartyJoin] = useState(false);
@@ -184,6 +184,7 @@ export default function Home() {
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isSubmitting, setIsSubmitting] = useState(false); // 🔥 광클(중복) 전송 방지 상태 추가
 
   useEffect(() => {
     if (isModalOpen) {
@@ -328,8 +329,9 @@ export default function Home() {
   };
 
   const handleApplyClick = () => {
+    if (isSubmitting) return; // 광클 추가 방어
     if (!userName) return alert(t.alertName);
-    if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone); // 🔥 연락처 필수 검증
+    if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
@@ -341,63 +343,82 @@ export default function Home() {
   };
 
   const executeApplication = async () => {
-    if (selectedEvent?.type === 'special' && userType !== 'member') {
-      return alert("행사는 부원만 신청 가능합니다.");
-    }
-    if (userType === 'guest' && selectedEvent?.allow_guests === false) {
-      return alert("해당 일정은 게스트 신청을 받지 않습니다.");
-    }
+    if (isSubmitting) return; // 🔥 광클 방지: 처리 중일 땐 실행 차단
+    setIsSubmitting(true);
 
-    let finalUserName = userName; 
-
-    if (userType === "member" || userType === "ob") {
-      const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
-      if (!membersList) return alert(t.alertNotRegistered);
-      const input = userName.trim().toLowerCase();
-      const matchedMember = membersList.find(m => {
-        const dbName = m.name.trim().toLowerCase();
-        if (dbName === input) return true;
-        if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
-          const dbParts = dbName.split(/\s+/);
-          const inputParts = input.split(/\s+/);
-          if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
-          if (dbParts.includes(input)) return true;
-          const initials = dbParts.map((p:string) => p[0]).join('');
-          if (initials === input) return true;
-        }
-        return false;
-      });
-      if (!matchedMember) return alert(t.alertNotRegistered);
-      finalUserName = matchedMember.name; 
-    }
-
-    if (userType === "member") {
-      const isAlreadyApplied = applicants.some(
-        (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
-      );
-      if (isAlreadyApplied) {
-        return alert(`이미 신청된 이름(${finalUserName})입니다. 명단을 다시 확인해주세요!`);
+    try {
+      if (selectedEvent?.type === 'special' && userType !== 'member') {
+        alert("행사는 부원만 신청 가능합니다.");
+        return;
       }
-    }
+      if (userType === 'guest' && selectedEvent?.allow_guests === false) {
+        alert("해당 일정은 게스트 신청을 받지 않습니다.");
+        return;
+      }
 
-    const { error } = await supabase.from("applications").insert([{
-      event_id: selectedEvent.id, 
-      user_name: finalUserName, 
-      user_type: userType,
-      guest_password: userType === "guest" ? guestPw : null,
-      phone_number: userType === "guest" ? phoneNum : null, // 🔥 연락처 저장
-      participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
-      lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
-      afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
-    }]);
+      let finalUserName = userName; 
 
-    if (error) alert(t.alertError + error.message); 
-    else {
-      alert(`${finalUserName}${t.alertSuccess}`); 
-      setIsGuestPaymentModalOpen(false); 
-      setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
-      setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
-      fetchApplicants(selectedEvent.id); setActiveTab("list"); 
+      // 🔥 [수정] OB는 DB 이름 검사에서 뺐습니다! 부원(member)만 DB 검사 진행
+      if (userType === "member") {
+        const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
+        if (!membersList) {
+          alert(t.alertNotRegistered);
+          return;
+        }
+        
+        const input = userName.trim().toLowerCase();
+        const matchedMember = membersList.find(m => {
+          const dbName = m.name.trim().toLowerCase();
+          if (dbName === input) return true;
+          if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
+            const dbParts = dbName.split(/\s+/);
+            const inputParts = input.split(/\s+/);
+            if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
+            if (dbParts.includes(input)) return true;
+            const initials = dbParts.map((p:string) => p[0]).join('');
+            if (initials === input) return true;
+          }
+          return false;
+        });
+        
+        if (!matchedMember) {
+          alert(t.alertNotRegistered);
+          return;
+        }
+        finalUserName = matchedMember.name; 
+
+        // 🔥 중복 신청 검사도 부원(member)만 실행
+        const isAlreadyApplied = applicants.some(
+          (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
+        );
+        if (isAlreadyApplied) {
+          alert(`이미 신청된 이름(${finalUserName})입니다. 명단을 다시 확인해주세요!`);
+          return;
+        }
+      }
+
+      const { error } = await supabase.from("applications").insert([{
+        event_id: selectedEvent.id, 
+        user_name: finalUserName, 
+        user_type: userType,
+        guest_password: userType === "guest" ? guestPw : null,
+        phone_number: userType === "guest" ? phoneNum : null, 
+        participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
+        lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
+        afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
+      }]);
+
+      if (error) {
+        alert(t.alertError + error.message);
+      } else {
+        alert(`${finalUserName}${t.alertSuccess}`); 
+        setIsGuestPaymentModalOpen(false); 
+        setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
+        setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
+        fetchApplicants(selectedEvent.id); setActiveTab("list"); 
+      }
+    } finally {
+      setIsSubmitting(false); // 🔥 성공하든 에러가 나든 끝날 때 버튼 잠금 해제
     }
   };
 
@@ -619,7 +640,6 @@ export default function Home() {
                           )}
                         </div>
                       </div>
-                      {/* 🔥 게스트 선택 시 연락처 및 비밀번호 입력 */}
                       {userType === "guest" && (
                         <div className="space-y-4">
                           <div>
@@ -660,8 +680,9 @@ export default function Home() {
                           </div>
                         </div>
                       )}
-                      <button disabled={status.disabled} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
-                        {status.text}
+                      {/* 🔥 버튼에 isSubmitting 로직 추가 (처리 중일 땐 비활성화) */}
+                      <button disabled={status.disabled || isSubmitting} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
+                        {isSubmitting ? "처리 중..." : status.text}
                       </button>
                     </>
                   )}
@@ -776,7 +797,7 @@ export default function Home() {
 
             <div className="flex gap-2 w-full">
               <button onClick={() => setIsGuestPaymentModalOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
-              <button onClick={executeApplication} className="flex-1 py-3.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/30">{t.paymentCompleted}</button>
+              <button disabled={isSubmitting} onClick={executeApplication} className="flex-1 py-3.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/30">{isSubmitting ? "처리 중..." : t.paymentCompleted}</button>
             </div>
           </div>
         </div>
