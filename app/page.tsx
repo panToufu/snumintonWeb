@@ -14,7 +14,7 @@ const dict = {
     special: "행사", 
     date: "일시:",
     applyView: "신청/보기",
-    suggestion: "건의함",
+    suggestion: "건함",
     poll: "투표",
     deadline: "마감:",
     enterText: "내용을 적어주세요",
@@ -184,7 +184,7 @@ export default function Home() {
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isSubmitting, setIsSubmitting] = useState(false); // 🔥 광클(중복) 전송 방지 상태 추가
+  const [isSubmitting, setIsSubmitting] = useState(false); 
 
   useEffect(() => {
     if (isModalOpen) {
@@ -194,6 +194,31 @@ export default function Home() {
       return () => clearInterval(timer);
     }
   }, [isModalOpen]);
+
+  // 🔥 [새로 추가된 기능] 모바일 뒤로 가기(스와이프) 시 앱 종료 방지 및 팝업 닫기
+  useEffect(() => {
+    const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen || isAdminAuthOpen;
+    
+    if (isAnyModalOpen) {
+      // 팝업이 열릴 때 가짜 히스토리를 하나 밀어넣습니다.
+      window.history.pushState(null, "", window.location.href);
+      
+      const handlePopState = () => {
+        // 사용자가 뒤로가기를 누르면 이 이벤트가 실행되어 모든 팝업을 닫습니다.
+        setIsModalOpen(false);
+        setIsRankingModalOpen(false);
+        setIsAttendanceAuthOpen(false);
+        setIsGuestPaymentModalOpen(false);
+        setIsAdminAuthOpen(false);
+      };
+      
+      window.addEventListener("popstate", handlePopState);
+      
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+  }, [isModalOpen, isRankingModalOpen, isAttendanceAuthOpen, isGuestPaymentModalOpen, isAdminAuthOpen]);
 
   useEffect(() => {
     const isAuth = localStorage.getItem("snuminton_attendance_auth");
@@ -329,7 +354,7 @@ export default function Home() {
   };
 
   const handleApplyClick = () => {
-    if (isSubmitting) return; // 광클 추가 방어
+    if (isSubmitting) return; 
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
@@ -343,7 +368,7 @@ export default function Home() {
   };
 
   const executeApplication = async () => {
-    if (isSubmitting) return; // 🔥 광클 방지: 처리 중일 땐 실행 차단
+    if (isSubmitting) return; 
     setIsSubmitting(true);
 
     try {
@@ -358,7 +383,6 @@ export default function Home() {
 
       let finalUserName = userName; 
 
-      // 🔥 [수정] OB는 DB 이름 검사에서 뺐습니다! 부원(member)만 DB 검사 진행
       if (userType === "member") {
         const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
         if (!membersList) {
@@ -387,7 +411,6 @@ export default function Home() {
         }
         finalUserName = matchedMember.name; 
 
-        // 🔥 중복 신청 검사도 부원(member)만 실행
         const isAlreadyApplied = applicants.some(
           (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
         );
@@ -418,7 +441,7 @@ export default function Home() {
         fetchApplicants(selectedEvent.id); setActiveTab("list"); 
       }
     } finally {
-      setIsSubmitting(false); // 🔥 성공하든 에러가 나든 끝날 때 버튼 잠금 해제
+      setIsSubmitting(false); 
     }
   };
 
@@ -680,7 +703,6 @@ export default function Home() {
                           </div>
                         </div>
                       )}
-                      {/* 🔥 버튼에 isSubmitting 로직 추가 (처리 중일 땐 비활성화) */}
                       <button disabled={status.disabled || isSubmitting} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
                         {isSubmitting ? "처리 중..." : status.text}
                       </button>
