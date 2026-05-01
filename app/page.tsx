@@ -75,6 +75,9 @@ const dict = {
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
     paymentCompleted: "입금했습니다",
+    closed: "마감된 일정입니다", // 추가됨
+    levelAsk: "본인의 실력을 선택해주세요", // 추가됨
+    levelAlert: "실력(레벨)을 선택하셔야 신청이 가능합니다!" // 추가됨
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -143,6 +146,9 @@ const dict = {
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
     paymentCompleted: "I have transferred",
+    closed: "Event Closed", // 추가됨
+    levelAsk: "Please select your skill level", // 추가됨
+    levelAlert: "Skill level selection is required!" // 추가됨
   }
 };
 
@@ -166,6 +172,7 @@ export default function Home() {
   const [participationType, setParticipationType] = useState("full");
   const [lessonChoice, setLessonChoice] = useState("tue_thu");
   const [afterpartyJoin, setAfterpartyJoin] = useState(false);
+  const [userLevel, setUserLevel] = useState(""); // 🔥 추가: 실력 레벨 저장 상태
 
   const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
   const [rankingMonth, setRankingMonth] = useState(new Date().getMonth() + 1);
@@ -184,7 +191,7 @@ export default function Home() {
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isSubmitting, setIsSubmitting] = useState(false); // 🔥 광클(중복) 전송 방지 상태 추가
+  const [isSubmitting, setIsSubmitting] = useState(false); 
 
   useEffect(() => {
     if (isModalOpen) {
@@ -194,6 +201,22 @@ export default function Home() {
       return () => clearInterval(timer);
     }
   }, [isModalOpen]);
+
+  useEffect(() => {
+    const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen || isAdminAuthOpen;
+    if (isAnyModalOpen) {
+      window.history.pushState(null, "", window.location.href);
+      const handlePopState = () => {
+        setIsModalOpen(false);
+        setIsRankingModalOpen(false);
+        setIsAttendanceAuthOpen(false);
+        setIsGuestPaymentModalOpen(false);
+        setIsAdminAuthOpen(false);
+      };
+      window.addEventListener("popstate", handlePopState);
+      return () => window.removeEventListener("popstate", handlePopState);
+    }
+  }, [isModalOpen, isRankingModalOpen, isAttendanceAuthOpen, isGuestPaymentModalOpen, isAdminAuthOpen]);
 
   useEffect(() => {
     const isAuth = localStorage.getItem("snuminton_attendance_auth");
@@ -268,9 +291,20 @@ export default function Home() {
 
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
+    
     const now = currentTime;
-    let openTime;
+    const eventEnd = new Date(selectedEvent.end); // 종료 시간 체크
 
+    // 🔥 추가: 이미 날짜/시간이 지난 이벤트는 무조건 신청 불가
+    if (now.getTime() > eventEnd.getTime()) {
+      return {
+        disabled: true,
+        text: t.closed,
+        style: "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300 shadow-none"
+      };
+    }
+
+    let openTime;
     if (selectedEvent.registration_start_at) {
       openTime = new Date(selectedEvent.registration_start_at);
     } else {
@@ -329,10 +363,13 @@ export default function Home() {
   };
 
   const handleApplyClick = () => {
-    if (isSubmitting) return; // 광클 추가 방어
+    if (isSubmitting) return; 
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
+    // 🔥 추가: 실력 조사 토글이 켜진 경우 필수 선택 확인
+    if (selectedEvent?.ask_level && !userLevel) return alert(t.levelAlert); 
+    
     if (status.disabled) return alert(status.text + " " + t.alertWait);
 
     if (userType === "guest") {
@@ -343,7 +380,7 @@ export default function Home() {
   };
 
   const executeApplication = async () => {
-    if (isSubmitting) return; // 🔥 광클 방지: 처리 중일 땐 실행 차단
+    if (isSubmitting) return; 
     setIsSubmitting(true);
 
     try {
@@ -358,7 +395,6 @@ export default function Home() {
 
       let finalUserName = userName; 
 
-      // 🔥 [수정] OB는 DB 이름 검사에서 뺐습니다! 부원(member)만 DB 검사 진행
       if (userType === "member") {
         const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
         if (!membersList) {
@@ -387,7 +423,6 @@ export default function Home() {
         }
         finalUserName = matchedMember.name; 
 
-        // 🔥 중복 신청 검사도 부원(member)만 실행
         const isAlreadyApplied = applicants.some(
           (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
         );
@@ -397,6 +432,7 @@ export default function Home() {
         }
       }
 
+      // 🔥 level 필드 추가
       const { error } = await supabase.from("applications").insert([{
         event_id: selectedEvent.id, 
         user_name: finalUserName, 
@@ -406,6 +442,7 @@ export default function Home() {
         participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
         lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
         afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
+        level: selectedEvent?.ask_level ? userLevel : null, 
       }]);
 
       if (error) {
@@ -414,11 +451,11 @@ export default function Home() {
         alert(`${finalUserName}${t.alertSuccess}`); 
         setIsGuestPaymentModalOpen(false); 
         setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
-        setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
+        setLessonChoice("tue_thu"); setAfterpartyJoin(false); setUserLevel("");
         fetchApplicants(selectedEvent.id); setActiveTab("list"); 
       }
     } finally {
-      setIsSubmitting(false); // 🔥 성공하든 에러가 나든 끝날 때 버튼 잠금 해제
+      setIsSubmitting(false); 
     }
   };
 
@@ -434,6 +471,7 @@ export default function Home() {
     setGuestPw("");
     setPhoneNum("");
     setUserType("member");
+    setUserLevel("");
   };
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
@@ -450,21 +488,29 @@ export default function Home() {
       </div>
 
       <div className="flex items-center justify-center gap-3 my-8">
-        <img 
-          src="/logo.png" 
-          alt="Snuminton Logo" 
-          className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" 
-        />
-        <h1 
-          className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" 
-          style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}
-        >
-          SNUMINTON
-        </h1>
+        <img src="/logo.png" alt="Snuminton Logo" className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" />
+        <h1 className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}>SNUMINTON</h1>
       </div>
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
-        <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale={lang === "ko" ? "ko" : "en"} displayEventTime={false} eventClick={(info) => { const ev = info.event; setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} />
+        {/* 🔥 FullCalendar 옵션 변경 (displayEventTime 해제 및 포맷팅 추가) */}
+        <FullCalendar 
+          plugins={[dayGridPlugin, interactionPlugin]} 
+          initialView="dayGridMonth" 
+          events={events} 
+          height="auto" 
+          locale={lang === "ko" ? "ko" : "en"} 
+          displayEventTime={true} 
+          eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: false, hour12: false }}
+          eventClick={(info) => { 
+            const ev = info.event; 
+            setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, end: ev.end, ...ev.extendedProps }); 
+            fetchApplicants(ev.id); 
+            setActiveTab("info"); 
+            setUserType("member"); 
+            setIsModalOpen(true); 
+          }} 
+        />
       </div>
 
       <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
@@ -473,33 +519,57 @@ export default function Home() {
         <div className="flex flex-col gap-3 min-h-[250px]">
           {hasOngoingItems ? (
             <>
-              {specialEvents.map((ev, idx) => (
-                <div key={`special-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
-                  <div>
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
-                    <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
+              {/* 🔥 행사 및 레슨 리스트 렌더링 부분 */}
+              {specialEvents.map((ev, idx) => {
+                // 현재 시간과 종료 시간을 비교해서 마감 여부 판별
+                const isClosed = ev.end && currentTime.getTime() > new Date(ev.end).getTime();
+                
+                return (
+                  <div key={`special-${idx}`} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
+                    <div>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
+                      <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        {ev.end && ` ~ ${new Date(ev.end).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
+                      </p>
+                    </div>
+                    {/* 🔥 마감된 경우 버튼 색상과 텍스트 변경 */}
+                    <button 
+                      onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, end: ev.end, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} 
+                      className={`w-full md:w-auto px-6 py-2.5 font-bold text-sm rounded-xl transition-colors mt-2 md:mt-0 ${isClosed ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                    >
+                      {isClosed ? t.closed : t.applyView}
+                    </button>
                   </div>
-                  <button onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0">{t.applyView}</button>
-                </div>
-              ))}
+                );
+              })}
 
-              {polls.map((poll) => (
-                <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
-                  <div>
-                    <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
-                    <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
-                    {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
+              {/* 🔥 투표 건의함 리스트 렌더링 부분 */}
+              {polls.map((poll) => {
+                // 투표 마감 시간과 현재 시간 비교
+                const isPollClosed = poll.deadline && currentTime.getTime() > new Date(poll.deadline).getTime();
+                
+                return (
+                  <div key={poll.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPollClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
+                    <div>
+                      <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
+                      <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
+                      {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
+                    </div>
+                    <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
+                      {/* 🔥 마감된 투표는 입력창을 숨기고 마감 뱃지 표시 */}
+                      {isPollClosed ? (
+                        <span className="px-4 py-2 bg-slate-100 text-slate-400 font-bold text-sm rounded-xl w-full md:w-auto text-center">{t.closed}</span>
+                      ) : poll.poll_type === 'text' ? (
+                        <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
+                      ) : (
+                        <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
+                      )}
+                    </div>
                   </div>
-                  <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
-                    {poll.poll_type === 'text' ? (
-                      <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
-                    ) : (
-                      <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
@@ -581,7 +651,12 @@ export default function Home() {
                   </div>
                   <h2 className="text-3xl font-black text-slate-900 leading-tight mb-4">{selectedEvent?.title}</h2>
                   <div className="grid grid-cols-1 gap-3 text-slate-600">
-                    <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { dateStyle: 'full', timeStyle: 'short' })}</div>
+                    {/* 🔥 팝업 내부 시간 표시 형식에 종료 시간 결합 */}
+                    <div className="flex items-center gap-3 text-sm font-medium">
+                      <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>
+                      {new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                      {selectedEvent?.end && ` ~ ${new Date(selectedEvent?.end).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
+                    </div>
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📍</span>{selectedEvent?.location || t.unspecified}</div>
                     {selectedEvent?.allow_registration !== false && (
                       <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
@@ -625,12 +700,12 @@ export default function Home() {
                     <>
                       <div className="group">
                         <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.appName}</label>
-                        <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} />
+                        <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} disabled={status.disabled} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="col-span-2">
                           <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
-                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)}>
+                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)} disabled={status.disabled}>
                             <option value="member">{t.member}</option>
                             {selectedEvent?.type !== 'special' && <option value="ob">{t.ob}</option>}
                             {selectedEvent?.type !== 'special' && selectedEvent?.allow_guests !== false && <option value="guest">{t.guest}</option>}
@@ -640,15 +715,28 @@ export default function Home() {
                           )}
                         </div>
                       </div>
+
+                      {/* 🔥 추가: 실력(레벨) 조사 토글 활성화 시 표시 */}
+                      {selectedEvent?.ask_level && (
+                        <div className="space-y-2 pt-2">
+                          <label className="block text-xs font-bold text-slate-400 ml-1">{t.levelAsk}</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button disabled={status.disabled} onClick={() => setUserLevel("A/B")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'A/B' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>상 (A/B)</button>
+                            <button disabled={status.disabled} onClick={() => setUserLevel("C")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'C' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>중 (C)</button>
+                            <button disabled={status.disabled} onClick={() => setUserLevel("D/초심")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'D/초심' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>하 (D/초심)</button>
+                          </div>
+                        </div>
+                      )}
+
                       {userType === "guest" && (
                         <div className="space-y-4">
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.phoneLabel}</label>
-                            <input type="text" placeholder={t.phonePlaceholder} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
+                            <input disabled={status.disabled} type="text" placeholder={t.phonePlaceholder} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
                           </div>
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.guestPw}</label>
-                            <input type="password" placeholder="비밀번호" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
+                            <input disabled={status.disabled} type="password" placeholder="비밀번호" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
                           </div>
                         </div>
                       )}
@@ -656,9 +744,9 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1 uppercase">Participation Type</label>
                           <div className="grid grid-cols-3 gap-2">
-                            <button onClick={() => setParticipationType("full")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'full' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Full (19-22)</button>
-                            <button onClick={() => setParticipationType("partial_7_9")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_7_9' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (19-21)</button>
-                            <button onClick={() => setParticipationType("partial_8_10")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_8_10' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (20-22)</button>
+                            <button disabled={status.disabled} onClick={() => setParticipationType("full")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'full' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Full (19-22)</button>
+                            <button disabled={status.disabled} onClick={() => setParticipationType("partial_7_9")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_7_9' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (19-21)</button>
+                            <button disabled={status.disabled} onClick={() => setParticipationType("partial_8_10")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_8_10' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (20-22)</button>
                           </div>
                         </div>
                       )}
@@ -666,8 +754,8 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1">{t.lessonChoice}</label>
                           <div className="grid grid-cols-2 gap-2">
-                            <button onClick={() => setLessonChoice("tue_thu")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'tue_thu' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.tueThu}</button>
-                            <button onClick={() => setLessonChoice("sat")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'sat' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.sat}</button>
+                            <button disabled={status.disabled} onClick={() => setLessonChoice("tue_thu")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'tue_thu' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.tueThu}</button>
+                            <button disabled={status.disabled} onClick={() => setLessonChoice("sat")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'sat' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.sat}</button>
                           </div>
                         </div>
                       )}
@@ -675,12 +763,11 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1">{t.afterparty}</label>
                           <div className="grid grid-cols-2 gap-2">
-                            <button onClick={() => setAfterpartyJoin(true)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === true ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-slate-100 text-slate-400'}`}>{t.join}</button>
-                            <button onClick={() => setAfterpartyJoin(false)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === false ? 'border-slate-300 bg-slate-50 text-slate-600' : 'border-slate-100 text-slate-400'}`}>{t.decline}</button>
+                            <button disabled={status.disabled} onClick={() => setAfterpartyJoin(true)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === true ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-slate-100 text-slate-400'}`}>{t.join}</button>
+                            <button disabled={status.disabled} onClick={() => setAfterpartyJoin(false)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === false ? 'border-slate-300 bg-slate-50 text-slate-600' : 'border-slate-100 text-slate-400'}`}>{t.decline}</button>
                           </div>
                         </div>
                       )}
-                      {/* 🔥 버튼에 isSubmitting 로직 추가 (처리 중일 땐 비활성화) */}
                       <button disabled={status.disabled || isSubmitting} onClick={handleApplyClick} className={`w-full py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98] mt-2 ${status.style}`}>
                         {isSubmitting ? "처리 중..." : status.text}
                       </button>
@@ -742,6 +829,8 @@ export default function Home() {
                                   {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
                                   {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
                                   {app.afterparty_join && <span className="text-[10px]">🍻</span>}
+                                  {/* 🔥 레벨 배지 렌더링 */}
+                                  {app.level && <span className="text-[8px] font-bold bg-pink-100 text-pink-600 px-1 py-0.5 rounded">{app.level}</span>}
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">

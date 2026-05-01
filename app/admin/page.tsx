@@ -58,6 +58,8 @@ export default function AdminPage() {
   const [spEventAfterparty, setSpEventAfterparty] = useState(false);
   const [spEventAllowRegistration, setSpEventAllowRegistration] = useState(true);
   const [spEventRegistrationStart, setSpEventRegistrationStart] = useState(""); 
+  // 🔥 추가: 실력 조사 토글 상태
+  const [spEventAskLevel, setSpEventAskLevel] = useState(false);
 
   const executives = members
     .filter(m => ['회장', '부회장', '임원진'].includes(m.user_type))
@@ -217,7 +219,8 @@ export default function AdminPage() {
     const { error } = await supabase.from("applications").update({
       participation_type: editAppTarget.participation_type,
       lesson_choice: editAppTarget.lesson_choice,
-      afterparty_join: editAppTarget.afterparty_join
+      afterparty_join: editAppTarget.afterparty_join,
+      level: editAppTarget.level // 🔥 추가: 수정한 실력도 저장되도록 추가
     }).eq("id", editAppTarget.id);
 
     if (error) alert("수정 오류: " + error.message);
@@ -311,7 +314,8 @@ export default function AdminPage() {
       allow_registration: spEventAllowRegistration,
       registration_start_at: regStartAt, 
       color: '#ec4899', 
-      allow_guests: false
+      allow_guests: false,
+      ask_level: spEventAllowRegistration ? spEventAskLevel : false // 🔥 추가: DB에 ask_level 필드 저장
     };
     
     const { error } = await supabase.from("events").insert([payload]);
@@ -327,6 +331,7 @@ export default function AdminPage() {
       setSpEventCapacity(50);
       setSpEventAfterparty(false);
       setSpEventAllowRegistration(true);
+      setSpEventAskLevel(false); // 🔥 초기화
       fetchEvents(); 
       setAdminTab("calendar"); 
     } 
@@ -351,7 +356,6 @@ export default function AdminPage() {
   const attendanceDisplayList = applicants.filter(app => app.user_type !== 'ob' && app.user_type !== 'guest');
   const guestFeeList = applicants.filter(app => app.user_type === 'guest');
   const absenceFeeList = applicants.filter(app => app.attendance_status === 'absent' && app.user_type !== 'guest');
-  // 🔥 출석 체크 하단에 띄워줄 OB와 게스트 전체 명단
   const obGuestList = applicants.filter(app => app.user_type === 'ob' || app.user_type === 'guest');
 
   return (
@@ -428,6 +432,8 @@ export default function AdminPage() {
                                   <span className="font-bold text-slate-500 text-xs md:text-sm truncate line-through">{app.user_name}</span>
                                   <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
                                   {partialText && <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 border border-slate-300 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
+                                  {/* 🔥 레벨 렌더링 (대기자) */}
+                                  {app.level && <span className="text-[8px] bg-slate-200 text-slate-400 px-1 py-0.5 rounded font-bold">{app.level}</span>}
                                   <span className="text-[10px] font-bold text-slate-400 ml-1">(정원 초과)</span>
                                 </div>
                                 <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
@@ -450,6 +456,8 @@ export default function AdminPage() {
                                 <span className="font-bold text-slate-800 text-xs md:text-sm truncate">{app.user_name}</span>
                                 <span className="text-[8px] md:text-[10px] bg-slate-100 text-slate-500 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
                                 {partialText && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
+                                {/* 🔥 레벨 렌더링 */}
+                                {app.level && <span className="text-[8px] bg-pink-50 text-pink-600 px-1.5 py-0.5 rounded font-bold border border-pink-100">{app.level}</span>}
                               </div>
                               
                               <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
@@ -467,7 +475,6 @@ export default function AdminPage() {
                         })}
                     </div>
 
-                    {/* 🔥 출석 통계에는 안 들어가지만, 신청 정보 수정 및 삭제를 위해 OB와 게스트를 띄워줌 */}
                     {obGuestList.length > 0 && (
                       <div className="mt-8">
                         <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
@@ -483,9 +490,10 @@ export default function AdminPage() {
                                 <span className={`text-[8px] md:text-[10px] px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${app.user_type === 'guest' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>
                                   {app.user_type === 'ob' ? 'OB' : '게스트'}
                                 </span>
-                                {/* 🔥 게스트일 경우 연락처 표시 */}
                                 {app.phone_number && <span className="text-[10px] font-medium text-slate-500 tracking-wide bg-slate-100 px-1.5 py-0.5 rounded">{app.phone_number}</span>}
                                 {app.participation_type !== 'full' && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{app.participation_type === 'partial_7_9' ? '부분참(19-21)' : '부분참(20-22)'}</span>}
+                                {/* 🔥 레벨 배지 */}
+                                {app.level && <span className="text-[8px] bg-pink-50 text-pink-600 px-1.5 py-0.5 rounded font-bold border border-pink-100">{app.level}</span>}
                               </div>
                               <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
                                 <button onClick={() => { setEditAppTarget(app); setIsEditAppModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 정보 수정">✏️</button>
@@ -578,7 +586,8 @@ export default function AdminPage() {
                     <p className="text-xs md:text-sm text-slate-500 mt-1">달력에서 일정을 클릭하여 수정/삭제하세요.</p>
                   </div>
                 </div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={handleEventClickForEdit} />
+                {/* 🔥 관리자 달력도 시간 명확하게 표시되도록 설정 */}
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale="ko" displayEventTime={true} eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: false, hour12: false }} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={handleEventClickForEdit} />
               </div>
             </div>
           )}
@@ -794,6 +803,20 @@ export default function AdminPage() {
                           </div>
                         </div>
                       </div>
+
+                      {/* 🔥 추가: 참가자 실력(레벨) 조사 토글 추가 */}
+                      <div>
+                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => setSpEventAskLevel(!spEventAskLevel)}>
+                          <div>
+                            <div className="font-bold text-sm text-slate-800">🏸 참가자 실력(레벨) 조사 추가</div>
+                            <div className="text-[11px] text-slate-500 mt-1">상/중/하 실력을 필수로 선택받습니다.</div>
+                          </div>
+                          <div className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 ${spEventAskLevel ? 'bg-pink-500' : 'bg-slate-300'}`}>
+                            <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${spEventAskLevel ? 'left-6' : 'left-1'}`} />
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
                   )}
 
@@ -899,6 +922,23 @@ export default function AdminPage() {
                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mt-2" onClick={() => setEditAppTarget({...editAppTarget, afterparty_join: !editAppTarget.afterparty_join})}>
                     <div className="font-bold text-sm text-slate-800">뒷풀이 참석 여부</div>
                     <div className={`w-12 h-6 rounded-full transition-colors relative ${editAppTarget.afterparty_join ? 'bg-blue-500' : 'bg-slate-300'}`}><div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${editAppTarget.afterparty_join ? 'left-7' : 'left-1'}`} /></div>
+                 </div>
+              )}
+
+              {/* 🔥 추가: 관리자가 부원의 실력 레벨을 임의로 수정할 수 있는 옵션 */}
+              {currentSelectedEventObj?.ask_level && (
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">실력 (레벨) 변경</label>
+                   <select 
+                     value={editAppTarget.level || ''} 
+                     onChange={e => setEditAppTarget({...editAppTarget, level: e.target.value})} 
+                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 font-bold text-sm"
+                   >
+                     <option value="" disabled>선택 안됨</option>
+                     <option value="A/B">상 (A/B)</option>
+                     <option value="C">중 (C)</option>
+                     <option value="D/초심">하 (D/초심)</option>
+                   </select>
                  </div>
               )}
 
