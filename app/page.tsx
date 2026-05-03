@@ -830,7 +830,15 @@ export default function Home() {
                                   {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
                                   {app.afterparty_join && <span className="text-[10px]">🍻</span>}
                                   {/* 🔥 레벨 배지 렌더링 */}
-                                  {app.level && <span className="text-[8px] font-bold bg-pink-100 text-pink-600 px-1 py-0.5 rounded">{app.level}</span>}
+                                  {app.level && (
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                      app.level === 'A/B' ? 'bg-red-50 text-red-600 border-red-200' :
+                                      app.level === 'C' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                      'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                    }`}>
+                                      {app.level === 'A/B' ? '상' : app.level === 'C' ? '중' : '하'}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">

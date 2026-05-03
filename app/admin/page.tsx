@@ -433,7 +433,15 @@ export default function AdminPage() {
                                   <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
                                   {partialText && <span className="text-[8px] md:text-[10px] bg-slate-200 text-slate-400 border border-slate-300 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
                                   {/* 🔥 레벨 렌더링 (대기자) */}
-                                  {app.level && <span className="text-[8px] bg-slate-200 text-slate-400 px-1 py-0.5 rounded font-bold">{app.level}</span>}
+                                  {app.level && (
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                      app.level === 'A/B' ? 'bg-red-50 text-red-600 border-red-200' :
+                                      app.level === 'C' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                      'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                    }`}>
+                                      {app.level === 'A/B' ? '상' : app.level === 'C' ? '중' : '하'}
+                                    </span>
+                                  )}
                                   <span className="text-[10px] font-bold text-slate-400 ml-1">(정원 초과)</span>
                                 </div>
                                 <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
@@ -457,7 +465,15 @@ export default function AdminPage() {
                                 <span className="text-[8px] md:text-[10px] bg-slate-100 text-slate-500 px-1 md:px-1.5 py-0.5 rounded uppercase font-bold flex-shrink-0">{app.user_type}</span>
                                 {partialText && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{partialText}</span>}
                                 {/* 🔥 레벨 렌더링 */}
-                                {app.level && <span className="text-[8px] bg-pink-50 text-pink-600 px-1.5 py-0.5 rounded font-bold border border-pink-100">{app.level}</span>}
+                                {app.level && (
+                                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                    app.level === 'A/B' ? 'bg-red-50 text-red-600 border-red-200' :
+                                    app.level === 'C' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                    'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                  }`}>
+                                    {app.level === 'A/B' ? '상' : app.level === 'C' ? '중' : '하'}
+                                  </span>
+                                )}
                               </div>
                               
                               <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
@@ -493,7 +509,15 @@ export default function AdminPage() {
                                 {app.phone_number && <span className="text-[10px] font-medium text-slate-500 tracking-wide bg-slate-100 px-1.5 py-0.5 rounded">{app.phone_number}</span>}
                                 {app.participation_type !== 'full' && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{app.participation_type === 'partial_7_9' ? '부분참(19-21)' : '부분참(20-22)'}</span>}
                                 {/* 🔥 레벨 배지 */}
-                                {app.level && <span className="text-[8px] bg-pink-50 text-pink-600 px-1.5 py-0.5 rounded font-bold border border-pink-100">{app.level}</span>}
+                                {app.level && (
+                                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                    app.level === 'A/B' ? 'bg-red-50 text-red-600 border-red-200' :
+                                    app.level === 'C' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                    'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                  }`}>
+                                    {app.level === 'A/B' ? '상' : app.level === 'C' ? '중' : '하'}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
                                 <button onClick={() => { setEditAppTarget(app); setIsEditAppModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 정보 수정">✏️</button>
