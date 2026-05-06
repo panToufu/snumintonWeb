@@ -700,12 +700,12 @@ export default function Home() {
                     <>
                       <div className="group">
                         <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.appName}</label>
-                        <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} disabled={status.disabled} />
+                        <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown}  />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="col-span-2">
                           <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
-                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)} disabled={status.disabled}>
+                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)} >
                             <option value="member">{t.member}</option>
                             {selectedEvent?.type !== 'special' && <option value="ob">{t.ob}</option>}
                             {selectedEvent?.type !== 'special' && selectedEvent?.allow_guests !== false && <option value="guest">{t.guest}</option>}
@@ -721,9 +721,9 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1">{t.levelAsk}</label>
                           <div className="grid grid-cols-3 gap-2">
-                            <button disabled={status.disabled} onClick={() => setUserLevel("A/B")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'A/B' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>상</button>
-                            <button disabled={status.disabled} onClick={() => setUserLevel("C")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'C' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>중</button>
-                            <button disabled={status.disabled} onClick={() => setUserLevel("D/초심")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'D/초심' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>하</button>
+                            <button  onClick={() => setUserLevel("A/B")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'A/B' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>상</button>
+                            <button  onClick={() => setUserLevel("C")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'C' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>중</button>
+                            <button  onClick={() => setUserLevel("D/초심")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'D/초심' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>하</button>
                           </div>
                         </div>
                       )}
@@ -732,11 +732,11 @@ export default function Home() {
                         <div className="space-y-4">
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.phoneLabel}</label>
-                            <input disabled={status.disabled} type="text" placeholder={t.phonePlaceholder} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
+                            <input  type="text" placeholder={t.phonePlaceholder} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
                           </div>
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.guestPw}</label>
-                            <input disabled={status.disabled} type="password" placeholder="비밀번호" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
+                            <input  type="password" placeholder="비밀번호" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
                           </div>
                         </div>
                       )}
@@ -744,9 +744,9 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1 uppercase">Participation Type</label>
                           <div className="grid grid-cols-3 gap-2">
-                            <button disabled={status.disabled} onClick={() => setParticipationType("full")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'full' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Full (19-22)</button>
-                            <button disabled={status.disabled} onClick={() => setParticipationType("partial_7_9")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_7_9' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (19-21)</button>
-                            <button disabled={status.disabled} onClick={() => setParticipationType("partial_8_10")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_8_10' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (20-22)</button>
+                            <button  onClick={() => setParticipationType("full")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'full' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Full (19-22)</button>
+                            <button  onClick={() => setParticipationType("partial_7_9")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_7_9' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (19-21)</button>
+                            <button  onClick={() => setParticipationType("partial_8_10")} className={`py-2 text-[11px] font-bold rounded-xl border-2 transition-all ${participationType === 'partial_8_10' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>Part (20-22)</button>
                           </div>
                         </div>
                       )}
@@ -754,8 +754,8 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1">{t.lessonChoice}</label>
                           <div className="grid grid-cols-2 gap-2">
-                            <button disabled={status.disabled} onClick={() => setLessonChoice("tue_thu")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'tue_thu' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.tueThu}</button>
-                            <button disabled={status.disabled} onClick={() => setLessonChoice("sat")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'sat' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.sat}</button>
+                            <button  onClick={() => setLessonChoice("tue_thu")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'tue_thu' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.tueThu}</button>
+                            <button  onClick={() => setLessonChoice("sat")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${lessonChoice === 'sat' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 text-slate-400'}`}>{t.sat}</button>
                           </div>
                         </div>
                       )}
@@ -763,8 +763,8 @@ export default function Home() {
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1">{t.afterparty}</label>
                           <div className="grid grid-cols-2 gap-2">
-                            <button disabled={status.disabled} onClick={() => setAfterpartyJoin(true)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === true ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-slate-100 text-slate-400'}`}>{t.join}</button>
-                            <button disabled={status.disabled} onClick={() => setAfterpartyJoin(false)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === false ? 'border-slate-300 bg-slate-50 text-slate-600' : 'border-slate-100 text-slate-400'}`}>{t.decline}</button>
+                            <button  onClick={() => setAfterpartyJoin(true)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === true ? 'border-emerald-500 bg-emerald-50 text-emerald-600' : 'border-slate-100 text-slate-400'}`}>{t.join}</button>
+                            <button  onClick={() => setAfterpartyJoin(false)} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${afterpartyJoin === false ? 'border-slate-300 bg-slate-50 text-slate-600' : 'border-slate-100 text-slate-400'}`}>{t.decline}</button>
                           </div>
                         </div>
                       )}
