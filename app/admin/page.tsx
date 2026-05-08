@@ -959,9 +959,9 @@ export default function AdminPage() {
                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 font-bold text-sm"
                    >
                      <option value="" disabled>선택 안됨</option>
-                     <option value="A/B">상 (A/B)</option>
-                     <option value="C">중 (C)</option>
-                     <option value="D/초심">하 (D/초심)</option>
+                     <option value="A/B">상</option>
+                     <option value="C">중</option>
+                     <option value="D/초심">하</option>
                    </select>
                  </div>
               )}

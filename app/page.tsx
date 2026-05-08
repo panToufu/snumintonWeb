@@ -475,8 +475,37 @@ export default function Home() {
   };
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
-  const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
+  
+  // 🔥 통합 정렬 로직: 행사와 투표를 하나로 합치고 마감 여부 -> 날짜순으로 정렬
+  const unifiedList = [
+    ...specialEvents.map(ev => ({ type: 'event', data: ev, id: `event-${ev.id}` })),
+    ...polls.map(poll => ({ type: 'poll', data: poll, id: `poll-${poll.id}` }))
+  ].sort((a, b) => {
+    // 1순위: 마감 여부 계산 (현재 시간이 종료/마감 시간보다 지났는지)
+    const isAClosed = a.type === 'event' 
+      ? (a.data.end && currentTime.getTime() > new Date(a.data.end).getTime())
+      : (a.data.deadline && currentTime.getTime() > new Date(a.data.deadline).getTime());
+    
+    const isBClosed = b.type === 'event' 
+      ? (b.data.end && currentTime.getTime() > new Date(b.data.end).getTime())
+      : (b.data.deadline && currentTime.getTime() > new Date(b.data.deadline).getTime());
 
+    // 마감되지 않은 것(신청 중)이 무조건 위로 올라오도록
+    if (isAClosed !== isBClosed) return isAClosed ? 1 : -1;
+
+    // 2순위: 행사 날짜 순 정렬 (빠른 날짜가 위로)
+    const dateA = a.type === 'event' 
+      ? new Date(a.data.start).getTime() 
+      : (a.data.deadline ? new Date(a.data.deadline).getTime() : new Date(a.data.created_at).getTime());
+    
+    const dateB = b.type === 'event' 
+      ? new Date(b.data.start).getTime() 
+      : (b.data.deadline ? new Date(b.data.deadline).getTime() : new Date(b.data.created_at).getTime());
+
+    return dateA - dateB;
+  });
+
+  const hasOngoingItems = unifiedList.length > 0;
   return (
     <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative flex flex-col">
       
@@ -518,14 +547,13 @@ export default function Home() {
         
         <div className="flex flex-col gap-3 min-h-[250px]">
           {hasOngoingItems ? (
-            <>
-              {/* 🔥 행사 및 레슨 리스트 렌더링 부분 */}
-              {specialEvents.map((ev, idx) => {
-                // 현재 시간과 종료 시간을 비교해서 마감 여부 판별
+            unifiedList.map((item) => {
+              if (item.type === 'event') {
+                const ev = item.data;
                 const isClosed = ev.end && currentTime.getTime() > new Date(ev.end).getTime();
                 
                 return (
-                  <div key={`special-${idx}`} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
+                  <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
                     <div>
                       <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
                       <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
@@ -534,7 +562,6 @@ export default function Home() {
                         {ev.end && ` ~ ${new Date(ev.end).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
                       </p>
                     </div>
-                    {/* 🔥 마감된 경우 버튼 색상과 텍스트 변경 */}
                     <button 
                       onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, end: ev.end, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} 
                       className={`w-full md:w-auto px-6 py-2.5 font-bold text-sm rounded-xl transition-colors mt-2 md:mt-0 ${isClosed ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
@@ -543,22 +570,18 @@ export default function Home() {
                     </button>
                   </div>
                 );
-              })}
-
-              {/* 🔥 투표 건의함 리스트 렌더링 부분 */}
-              {polls.map((poll) => {
-                // 투표 마감 시간과 현재 시간 비교
+              } else {
+                const poll = item.data;
                 const isPollClosed = poll.deadline && currentTime.getTime() > new Date(poll.deadline).getTime();
                 
                 return (
-                  <div key={poll.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPollClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
+                  <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPollClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
                     <div>
                       <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
                       <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
                       {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
                     </div>
                     <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
-                      {/* 🔥 마감된 투표는 입력창을 숨기고 마감 뱃지 표시 */}
                       {isPollClosed ? (
                         <span className="px-4 py-2 bg-slate-100 text-slate-400 font-bold text-sm rounded-xl w-full md:w-auto text-center">{t.closed}</span>
                       ) : poll.poll_type === 'text' ? (
@@ -569,8 +592,8 @@ export default function Home() {
                     </div>
                   </div>
                 );
-              })}
-            </>
+              }
+            })
           ) : (
             <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
               <span className="text-2xl mb-3 opacity-60">🍃</span>
