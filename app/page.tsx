@@ -75,9 +75,9 @@ const dict = {
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
     paymentCompleted: "입금했습니다",
-    closed: "마감된 일정입니다", // 추가됨
-    levelAsk: "본인의 실력을 선택해주세요", // 추가됨
-    levelAlert: "실력(레벨)을 선택하셔야 신청이 가능합니다!" // 추가됨
+    closed: "마감된 일정입니다", 
+    levelAsk: "본인의 실력을 선택해주세요", 
+    levelAlert: "실력(레벨)을 선택하셔야 신청이 가능합니다!" 
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -146,9 +146,9 @@ const dict = {
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
     paymentCompleted: "I have transferred",
-    closed: "Event Closed", // 추가됨
-    levelAsk: "Please select your skill level", // 추가됨
-    levelAlert: "Skill level selection is required!" // 추가됨
+    closed: "Event Closed", 
+    levelAsk: "Please select your skill level", 
+    levelAlert: "Skill level selection is required!" 
   }
 };
 
@@ -172,7 +172,7 @@ export default function Home() {
   const [participationType, setParticipationType] = useState("full");
   const [lessonChoice, setLessonChoice] = useState("tue_thu");
   const [afterpartyJoin, setAfterpartyJoin] = useState(false);
-  const [userLevel, setUserLevel] = useState(""); // 🔥 추가: 실력 레벨 저장 상태
+  const [userLevel, setUserLevel] = useState(""); 
 
   const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
   const [rankingMonth, setRankingMonth] = useState(new Date().getMonth() + 1);
@@ -192,6 +192,30 @@ export default function Home() {
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false); 
+
+  // 🔥 추가: 서버와 로컬 시간의 오차(Offset)를 저장하는 상태
+  const [timeOffset, setTimeOffset] = useState<number>(0);
+
+  // 🔥 추가: 접속 시 한 번 서버 시간을 가져와 오차를 계산하는 로직
+  useEffect(() => {
+    const syncServerTime = async () => {
+      try {
+        const res = await fetch(window.location.href, { method: "HEAD", cache: "no-store" });
+        const dateHeader = res.headers.get("Date");
+        if (dateHeader) {
+          const serverTime = new Date(dateHeader).getTime();
+          const localTime = Date.now();
+          setTimeOffset(serverTime - localTime); // 서버 시간과 내 핸드폰 시간의 차이 저장
+        }
+      } catch (e) {
+        console.error("서버 시간 동기화 실패:", e);
+      }
+    };
+    syncServerTime();
+  }, []);
+
+  // 🔥 추가: 항상 오차가 보정된 '진짜 서버 시간'을 사용하기 위한 변수
+  const trueCurrentTime = new Date(currentTime.getTime() + timeOffset);
 
   useEffect(() => {
     if (isModalOpen) {
@@ -292,10 +316,10 @@ export default function Home() {
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
     
-    const now = currentTime;
-    const eventEnd = new Date(selectedEvent.end); // 종료 시간 체크
+    // 🔥 로컬 시간이 아닌 동기화된 '진짜 서버 시간' 사용
+    const now = trueCurrentTime;
+    const eventEnd = new Date(selectedEvent.end);
 
-    // 🔥 추가: 이미 날짜/시간이 지난 이벤트는 무조건 신청 불가
     if (now.getTime() > eventEnd.getTime()) {
       return {
         disabled: true,
@@ -367,7 +391,6 @@ export default function Home() {
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
-    // 🔥 추가: 실력 조사 토글이 켜진 경우 필수 선택 확인
     if (selectedEvent?.ask_level && !userLevel) return alert(t.levelAlert); 
     
     if (status.disabled) return alert(status.text + " " + t.alertWait);
@@ -432,7 +455,6 @@ export default function Home() {
         }
       }
 
-      // 🔥 level 필드 추가
       const { error } = await supabase.from("applications").insert([{
         event_id: selectedEvent.id, 
         user_name: finalUserName, 
@@ -476,24 +498,21 @@ export default function Home() {
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
   
-  // 🔥 통합 정렬 로직: 행사와 투표를 하나로 합치고 마감 여부 -> 날짜순으로 정렬
   const unifiedList = [
     ...specialEvents.map(ev => ({ type: 'event', data: ev, id: `event-${ev.id}` })),
     ...polls.map(poll => ({ type: 'poll', data: poll, id: `poll-${poll.id}` }))
   ].sort((a, b) => {
-    // 1순위: 마감 여부 계산 (현재 시간이 종료/마감 시간보다 지났는지)
+    // 🔥 로컬 시간이 아닌 동기화된 '진짜 서버 시간' 사용
     const isAClosed = a.type === 'event' 
-      ? (a.data.end && currentTime.getTime() > new Date(a.data.end).getTime())
-      : (a.data.deadline && currentTime.getTime() > new Date(a.data.deadline).getTime());
+      ? (a.data.end && trueCurrentTime.getTime() > new Date(a.data.end).getTime())
+      : (a.data.deadline && trueCurrentTime.getTime() > new Date(a.data.deadline).getTime());
     
     const isBClosed = b.type === 'event' 
-      ? (b.data.end && currentTime.getTime() > new Date(b.data.end).getTime())
-      : (b.data.deadline && currentTime.getTime() > new Date(b.data.deadline).getTime());
+      ? (b.data.end && trueCurrentTime.getTime() > new Date(b.data.end).getTime())
+      : (b.data.deadline && trueCurrentTime.getTime() > new Date(b.data.deadline).getTime());
 
-    // 마감되지 않은 것(신청 중)이 무조건 위로 올라오도록
     if (isAClosed !== isBClosed) return isAClosed ? 1 : -1;
 
-    // 2순위: 행사 날짜 순 정렬 (빠른 날짜가 위로)
     const dateA = a.type === 'event' 
       ? new Date(a.data.start).getTime() 
       : (a.data.deadline ? new Date(a.data.deadline).getTime() : new Date(a.data.created_at).getTime());
@@ -522,7 +541,6 @@ export default function Home() {
       </div>
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
-        {/* 🔥 FullCalendar 옵션 변경 (displayEventTime 해제 및 포맷팅 추가) */}
         <FullCalendar 
           plugins={[dayGridPlugin, interactionPlugin]} 
           initialView="dayGridMonth" 
@@ -550,7 +568,8 @@ export default function Home() {
             unifiedList.map((item) => {
               if (item.type === 'event') {
                 const ev = item.data;
-                const isClosed = ev.end && currentTime.getTime() > new Date(ev.end).getTime();
+                // 🔥 로컬 시간이 아닌 동기화된 '진짜 서버 시간' 사용
+                const isClosed = ev.end && trueCurrentTime.getTime() > new Date(ev.end).getTime();
                 
                 return (
                   <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
@@ -572,7 +591,8 @@ export default function Home() {
                 );
               } else {
                 const poll = item.data;
-                const isPollClosed = poll.deadline && currentTime.getTime() > new Date(poll.deadline).getTime();
+                // 🔥 로컬 시간이 아닌 동기화된 '진짜 서버 시간' 사용
+                const isPollClosed = poll.deadline && trueCurrentTime.getTime() > new Date(poll.deadline).getTime();
                 
                 return (
                   <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPollClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
@@ -674,7 +694,6 @@ export default function Home() {
                   </div>
                   <h2 className="text-3xl font-black text-slate-900 leading-tight mb-4">{selectedEvent?.title}</h2>
                   <div className="grid grid-cols-1 gap-3 text-slate-600">
-                    {/* 🔥 팝업 내부 시간 표시 형식에 종료 시간 결합 */}
                     <div className="flex items-center gap-3 text-sm font-medium">
                       <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>
                       {new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
@@ -739,14 +758,13 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* 🔥 추가: 실력(레벨) 조사 토글 활성화 시 표시 */}
                       {selectedEvent?.ask_level && (
                         <div className="space-y-2 pt-2">
                           <label className="block text-xs font-bold text-slate-400 ml-1">{t.levelAsk}</label>
                           <div className="grid grid-cols-3 gap-2">
-                            <button  onClick={() => setUserLevel("A/B")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'A/B' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>상</button>
-                            <button  onClick={() => setUserLevel("C")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'C' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>중</button>
-                            <button  onClick={() => setUserLevel("D/초심")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'D/초심' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>하</button>
+                            <button  onClick={() => setUserLevel("A/B")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'A/B' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>상 (A/B)</button>
+                            <button  onClick={() => setUserLevel("C")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'C' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>중 (C)</button>
+                            <button  onClick={() => setUserLevel("D/초심")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'D/초심' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>하 (D/초심)</button>
                           </div>
                         </div>
                       )}
@@ -852,7 +870,6 @@ export default function Home() {
                                   {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
                                   {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
                                   {app.afterparty_join && <span className="text-[10px]">🍻</span>}
-                                  {/* 🔥 레벨 배지 렌더링 */}
                                   {app.level && (
                                     <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
                                       app.level === 'A/B' ? 'bg-red-50 text-red-600 border-red-200' :
