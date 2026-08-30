@@ -10,7 +10,8 @@ import { supabase } from "../../supabase";
 export default function AdminPage() {
   const router = useRouter();
   
-  const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "monthly" | "members" | "register" | "special" | "executives" | "fees">("daily"); 
+  // 🔥 'fees' 탭을 'submission' (제출 확인)으로 유지/확장
+  const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "submission" | "monthly" | "members" | "register" | "special" | "executives">("daily"); 
   
   const [events, setEvents] = useState<any[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -52,7 +53,7 @@ export default function AdminPage() {
 
   const [spEventTitle, setSpEventTitle] = useState("");
   const [spEventStartDate, setSpEventStartDate] = useState(""); 
-  const [spEventEndDate, setSpEventEndDate] = useState("");     
+  const [spEventEndDate, setSpEventEndDate] = useState("");      
   const [spEventLocation, setSpEventLocation] = useState("");
   const [spEventCapacity, setSpEventCapacity] = useState(50);
   const [spEventAfterparty, setSpEventAfterparty] = useState(false);
@@ -210,7 +211,7 @@ export default function AdminPage() {
   const togglePaymentStatus = async (appId: string, currentStatus: boolean) => {
     const { error } = await supabase.from("applications").update({ is_paid: !currentStatus }).eq("id", appId);
     if (!error && selectedEventId) fetchApplicants(selectedEventId);
-    else if (error) alert("결제 상태 업데이트 오류: " + error.message);
+    else if (error) alert("제출 상태 업데이트 오류: " + error.message);
   };
 
   const handleSaveAppEdit = async () => {
@@ -349,9 +350,12 @@ export default function AdminPage() {
   const currentSelectedEventObj = events.find(e => e.id === selectedEventId);
 
   const attendanceDisplayList = applicants.filter(app => app.user_type !== 'ob' && app.user_type !== 'guest');
-  const guestFeeList = applicants.filter(app => app.user_type === 'guest');
-  const absenceFeeList = applicants.filter(app => app.attendance_status === 'absent' && app.user_type !== 'guest');
-  // 🔥 출석 체크 하단에 띄워줄 OB와 게스트 전체 명단
+  
+  // 🔥 제출 확인 탭에서 사용할 3가지 분류 리스트
+  const lateList = applicants.filter(app => app.attendance_status === 'late' && app.user_type !== 'guest');
+  const absenceList = applicants.filter(app => app.attendance_status === 'absent' && app.user_type !== 'guest');
+  const guestList = applicants.filter(app => app.user_type === 'guest');
+
   const obGuestList = applicants.filter(app => app.user_type === 'ob' || app.user_type === 'guest');
 
   return (
@@ -381,7 +385,7 @@ export default function AdminPage() {
           
           <div className="flex px-4 md:px-6 gap-4 md:gap-6 text-xs md:text-sm font-bold border-t border-slate-700 overflow-x-auto custom-scrollbar">
             <button onClick={() => setAdminTab("daily")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "daily" ? "border-blue-400 text-blue-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📝 현장 출석 체크</button>
-            <button onClick={() => setAdminTab("fees")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "fees" ? "border-indigo-400 text-indigo-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>💰 결제/회비 확인</button>
+            <button onClick={() => setAdminTab("submission")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "submission" ? "border-indigo-400 text-indigo-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📋 제출 확인</button>
             <button onClick={() => setAdminTab("calendar")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "calendar" ? "border-amber-400 text-amber-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📅 일정 관리</button>
             <button onClick={() => setAdminTab("monthly")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "monthly" ? "border-blue-400 text-blue-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📊 월별 출석부</button>
             <button onClick={() => setAdminTab("members")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "members" ? "border-emerald-400 text-emerald-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>👥 부원 명단</button>
@@ -467,7 +471,6 @@ export default function AdminPage() {
                         })}
                     </div>
 
-                    {/* 🔥 출석 통계에는 안 들어가지만, 신청 정보 수정 및 삭제를 위해 OB와 게스트를 띄워줌 */}
                     {obGuestList.length > 0 && (
                       <div className="mt-8">
                         <h3 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
@@ -483,8 +486,12 @@ export default function AdminPage() {
                                 <span className={`text-[8px] md:text-[10px] px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${app.user_type === 'guest' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>
                                   {app.user_type === 'ob' ? 'OB' : '게스트'}
                                 </span>
-                                {/* 🔥 게스트일 경우 연락처 표시 */}
                                 {app.phone_number && <span className="text-[10px] font-medium text-slate-500 tracking-wide bg-slate-100 px-1.5 py-0.5 rounded">{app.phone_number}</span>}
+                                {app.user_type === 'guest' && app.guest_source && (
+                                  <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-200 px-1.5 py-0.5 rounded font-bold">
+                                    경로: {app.guest_source}{app.guest_referrer ? ` (${app.guest_referrer})` : ''}
+                                  </span>
+                                )}
                                 {app.participation_type !== 'full' && <span className="text-[8px] md:text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1 md:px-1.5 py-0.5 rounded font-bold flex-shrink-0">{app.participation_type === 'partial_7_9' ? '부분참(19-21)' : '부분참(20-22)'}</span>}
                               </div>
                               <div className="flex gap-1 md:gap-1.5 mt-2 md:mt-0 w-full md:w-auto justify-end">
@@ -502,10 +509,11 @@ export default function AdminPage() {
             </>
           )}
 
-          {adminTab === "fees" && (
+          {/* 🔥 '제출 확인' 탭 (지각 인원 / 불참 인원 / 게스트 3가지 분류) */}
+          {adminTab === "submission" && (
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
-                <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">결제 확인용 캘린더</h2></div>
+                <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">제출 확인용 캘린더</h2></div>
                 <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
@@ -516,24 +524,25 @@ export default function AdminPage() {
                     <div className="flex justify-between items-end mb-4 border-b border-slate-200 pb-4">
                       <div>
                         <span className="text-[10px] md:text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded mb-1 md:mb-2 inline-block">{selectedEventDate && new Date(selectedEventDate).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>
-                        <h2 className="text-lg md:text-xl font-black text-slate-900">{selectedEventTitle} 결제 확인</h2>
+                        <h2 className="text-lg md:text-xl font-black text-slate-900">{selectedEventTitle} 제출 확인</h2>
                       </div>
                     </div>
 
+                    {/* 1. 지각 인원 (지각콕 제출 확인) */}
                     <div>
                       <h3 className="font-black text-slate-800 mb-3 flex items-center gap-2">
-                        <span className="text-lg">💸</span> <span>게스트비 확인</span>
-                        <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full">{guestFeeList.length}명</span>
+                        <span className="text-lg">⏰</span> <span>지각 인원 (지각콕 제출 확인)</span>
+                        <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full">{lateList.length}명</span>
                       </h3>
                       <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                        {guestFeeList.length === 0 ? <div className="p-4 text-center text-slate-400 text-xs">게스트 신청자가 없습니다.</div> : guestFeeList.map(app => (
+                        {lateList.length === 0 ? <div className="p-4 text-center text-slate-400 text-xs">지각 인원이 없습니다.</div> : lateList.map(app => (
                           <div key={app.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-slate-800 text-sm">{app.user_name}</span>
-                              <span className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">게스트</span>
+                              <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded font-bold">지각</span>
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                              <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '입금 완료' : '미납'}</span>
+                              <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '제출 완료' : '미제출'}</span>
                               <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, app.is_paid)} className="w-4 h-4 accent-indigo-500 rounded" />
                             </label>
                           </div>
@@ -541,26 +550,57 @@ export default function AdminPage() {
                       </div>
                     </div>
 
+                    {/* 2. 불참 인원 (불참비 납부 확인) */}
                     <div>
                       <h3 className="font-black text-slate-800 mb-3 flex items-center gap-2 mt-8">
-                        <span className="text-lg">❌</span> <span>불참비 확인</span>
-                        <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full">{absenceFeeList.length}명</span>
+                        <span className="text-lg">❌</span> <span>불참 인원 (불참비 확인)</span>
+                        <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full">{absenceList.length}명</span>
                       </h3>
                       <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                        {absenceFeeList.length === 0 ? <div className="p-4 text-center text-slate-400 text-xs">불참비 대상자가 없습니다.</div> : absenceFeeList.map(app => (
+                        {absenceList.length === 0 ? <div className="p-4 text-center text-slate-400 text-xs">불참 인원이 없습니다.</div> : absenceList.map(app => (
                           <div key={app.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-slate-800 text-sm">{app.user_name}</span>
-                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase font-bold">{app.user_type}</span>
+                              <span className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded font-bold">불참</span>
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-                              <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '입금 완료' : '미납'}</span>
+                              <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '납부 완료' : '미납'}</span>
                               <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, app.is_paid)} className="w-4 h-4 accent-indigo-500 rounded" />
                             </label>
                           </div>
                         ))}
                       </div>
                       <p className="text-[10px] text-slate-400 mt-3 text-center">※ '📝 현장 출석 체크' 탭에서 불참(❌)으로 체크된 부원만 이곳에 표시됩니다.</p>
+                    </div>
+
+                    {/* 3. 게스트 (게스트비 및 유입경로 확인) */}
+                    <div>
+                      <h3 className="font-black text-slate-800 mb-3 flex items-center gap-2 mt-8">
+                        <span className="text-lg">💸</span> <span>게스트 (게스트비 및 경로 확인)</span>
+                        <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full">{guestList.length}명</span>
+                      </h3>
+                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                        {guestList.length === 0 ? <div className="p-4 text-center text-slate-400 text-xs">게스트 신청자가 없습니다.</div> : guestList.map(app => (
+                          <div key={app.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800 text-sm">{app.user_name}</span>
+                                <span className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded font-bold">게스트</span>
+                                {app.phone_number && <span className="text-[10px] text-slate-500">{app.phone_number}</span>}
+                              </div>
+                              {app.guest_source && (
+                                <span className="text-[10px] text-purple-600 mt-1 font-medium">
+                                  경로: {app.guest_source}{app.guest_referrer ? ` (추천: ${app.guest_referrer})` : ''}
+                                </span>
+                              )}
+                            </div>
+                            <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                              <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '입금 완료' : '미납'}</span>
+                              <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, app.is_paid)} className="w-4 h-4 accent-indigo-500 rounded" />
+                            </label>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
                   </div>
@@ -654,7 +694,7 @@ export default function AdminPage() {
                   <h3 className="font-black text-slate-800 text-base md:text-lg">새 임원진 임명</h3>
                   <p className="text-xs text-slate-500">전체 부원 명단에 있는 사람만 임원진으로 임명할 수 있습니다.</p>
                   <div className="flex flex-col md:flex-row gap-3 mt-1">
-                    <input type="text" value={newExecName} onChange={(e) => setNewExecName(e.target.value)} placeholder="부원 이름 검색 (예: 홍길동)" className="flex-1 px-4 py-3 border-2 border-slate-100 rounded-xl outline-none focus:border-rose-400 text-sm font-bold bg-white" onKeyDown={e => e.key === 'Enter' && handleAddExecutive()} />
+                    <input type="text" value={newExecName} onChange={(e) => setNewExecName(e.target.value)} placeholder="" className="flex-1 px-4 py-3 border-2 border-slate-100 rounded-xl outline-none focus:border-rose-400 text-sm font-bold bg-white" onKeyDown={e => e.key === 'Enter' && handleAddExecutive()} />
                     <div className="flex gap-2">
                       <select value={newExecRole} onChange={(e) => setNewExecRole(e.target.value)} className="w-full md:w-auto px-4 py-3 border-2 border-slate-100 focus:border-rose-400 rounded-xl text-sm font-bold outline-none bg-white">
                         <option value="회장">회장</option><option value="부회장">부회장</option><option value="임원진">일반 임원진</option>
@@ -742,7 +782,7 @@ export default function AdminPage() {
                 <div className="space-y-6">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2">📝 행사 제목</label>
-                    <input type="text" value={spEventTitle} onChange={(e) => setSpEventTitle(e.target.value)} placeholder="예: 2026 1학기 개강총회" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
+                    <input type="text" value={spEventTitle} onChange={(e) => setSpEventTitle(e.target.value)} placeholder="" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -758,7 +798,7 @@ export default function AdminPage() {
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2">📍 장소 (선택)</label>
-                    <input type="text" value={spEventLocation} onChange={(e) => setSpEventLocation(e.target.value)} placeholder="예: 서울대학교 체육관" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
+                    <input type="text" value={spEventLocation} onChange={(e) => setSpEventLocation(e.target.value)} placeholder="" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                   </div>
 
                   <div className="flex items-center justify-between p-5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mt-4 hover:border-pink-300 transition-colors" onClick={() => setSpEventAllowRegistration(!spEventAllowRegistration)}>
@@ -776,7 +816,7 @@ export default function AdminPage() {
                       <div>
                         <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 참가 신청 시작(오픈) 시간</label>
                         <input type="datetime-local" value={spEventRegistrationStart} onChange={(e) => setSpEventRegistrationStart(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
-                        <p className="text-[10px] text-slate-400 mt-1">설정한 시간 전에는 부원들이 신청 버튼을 누를 수 없습니다.</p>
+                        <p className="text-[10px] text-slate-400 mt-1">설정한 시간 전에는 부원들이 신청 버튼을 누르지 못합니다.</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

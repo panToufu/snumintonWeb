@@ -14,10 +14,10 @@ const dict = {
     special: "행사", 
     date: "일시:",
     applyView: "신청/보기",
-    suggestion: "건함",
+    suggestion: "건의함",
     poll: "투표",
     deadline: "마감:",
-    enterText: "내용을 적어주세요",
+    enterText: "",
     submit: "제출",
     attend: "참여",
     absent: "불참",
@@ -25,7 +25,7 @@ const dict = {
     attendanceTitle: "상세 출석부",
     attendanceAuthTitle: "🔒 부원 인증",
     attendanceAuthDesc: "출석부를 보려면 성함을 입력해주세요.",
-    attendanceAuthPlaceholder: "내 이름 입력",
+    attendanceAuthPlaceholder: "",
     close: "닫기 Window", 
     noMembers: "등록된 부원이나 일정이 없습니다.",
     rank: "순위",
@@ -34,7 +34,7 @@ const dict = {
     regular: "정규",
     adminLogin: "👑 운영진 로그인",
     adminDesc: "관리자 전용 페이지입니다. 비밀번호를 입력해주세요.",
-    pwPlaceholder: "비밀번호 4자리",
+    pwPlaceholder: "",
     cancel: "취소",
     enter: "입장",
     infoTab: "정보 및 신청",
@@ -43,14 +43,14 @@ const dict = {
     capacity: "정원",
     persons: "명",
     appName: "신청자 성함",
-    namePlaceholder: "이름을 입력하세요",
+    namePlaceholder: "",
     memberType: "회원 구분",
     member: "부원",
     ob: "OB",
     guest: "게스트",
     guestPw: "게스트 확인용 비밀번호",
     phoneLabel: "연락처 (게스트 필수)",
-    phonePlaceholder: "010-XXXX-XXXX",
+    phonePlaceholder: "",
     lessonChoice: "레슨 요일 선택",
     tueThu: "화/목 레슨",
     sat: "토요 레슨",
@@ -85,7 +85,7 @@ const dict = {
     suggestion: "Suggestion Box",
     poll: "Poll",
     deadline: "Deadline:",
-    enterText: "Please enter your text",
+    enterText: "",
     submit: "Submit",
     attend: "Attend",
     absent: "Absent",
@@ -93,7 +93,7 @@ const dict = {
     attendanceTitle: "Detailed Attendance",
     attendanceAuthTitle: "🔒 Member Verification",
     attendanceAuthDesc: "Please enter your registered name to view the attendance list.",
-    attendanceAuthPlaceholder: "Enter your name",
+    attendanceAuthPlaceholder: "",
     close: "Close Window",
     noMembers: "No registered members or events.",
     rank: "Rank",
@@ -102,7 +102,7 @@ const dict = {
     regular: "Regular",
     adminLogin: "👑 Admin Login",
     adminDesc: "For admins only. Please enter the password.",
-    pwPlaceholder: "4-digit password",
+    pwPlaceholder: "",
     cancel: "Cancel",
     enter: "Enter",
     infoTab: "Info & Apply",
@@ -111,14 +111,14 @@ const dict = {
     capacity: "Capacity",
     persons: "",
     appName: "Applicant Name",
-    namePlaceholder: "Enter your name",
+    namePlaceholder: "",
     memberType: "Membership",
     member: "Member",
     ob: "OB",
     guest: "Guest",
     guestPw: "Guest Password",
     phoneLabel: "Phone Number (Required for Guests)",
-    phonePlaceholder: "010-XXXX-XXXX",
+    phonePlaceholder: "",
     lessonChoice: "Select Lesson Day",
     tueThu: "Tue/Thu Lesson",
     sat: "Sat Lesson",
@@ -167,6 +167,10 @@ export default function Home() {
   const [lessonChoice, setLessonChoice] = useState("tue_thu");
   const [afterpartyJoin, setAfterpartyJoin] = useState(false);
 
+  // 🔥 게스트 유입 경로 및 추천인 상태 추가
+  const [guestSource, setGuestSource] = useState("인스타");
+  const [guestReferrer, setGuestReferrer] = useState("");
+
   const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
   const [rankingMonth, setRankingMonth] = useState(new Date().getMonth() + 1);
   const [rankingYear, setRankingYear] = useState(new Date().getFullYear());
@@ -195,25 +199,19 @@ export default function Home() {
     }
   }, [isModalOpen]);
 
-  // 🔥 [새로 추가된 기능] 모바일 뒤로 가기(스와이프) 시 앱 종료 방지 및 팝업 닫기
   useEffect(() => {
     const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen || isAdminAuthOpen;
     
     if (isAnyModalOpen) {
-      // 팝업이 열릴 때 가짜 히스토리를 하나 밀어넣습니다.
       window.history.pushState(null, "", window.location.href);
-      
       const handlePopState = () => {
-        // 사용자가 뒤로가기를 누르면 이 이벤트가 실행되어 모든 팝업을 닫습니다.
         setIsModalOpen(false);
         setIsRankingModalOpen(false);
         setIsAttendanceAuthOpen(false);
         setIsGuestPaymentModalOpen(false);
         setIsAdminAuthOpen(false);
       };
-      
       window.addEventListener("popstate", handlePopState);
-      
       return () => {
         window.removeEventListener("popstate", handlePopState);
       };
@@ -420,6 +418,25 @@ export default function Home() {
         }
       }
 
+      // 🔥 게스트 유입경로가 '부원 소개'일 때 추천인 존재 여부 검증
+      let finalReferrer = null;
+      if (userType === "guest" && guestSource === "부원 소개") {
+        if (!guestReferrer.trim()) {
+          alert("소개해준 부원 이름을 입력해주세요!");
+          setIsSubmitting(false);
+          return;
+        }
+        const { data: membersList } = await supabase.from("members").select("name");
+        const refInput = guestReferrer.trim().toLowerCase();
+        const foundRef = membersList?.find(m => m.name.trim().toLowerCase() === refInput);
+        if (!foundRef) {
+          alert("입력한 추천인 이름이 부원 명단에 없습니다. 정확히 확인해주세요!");
+          setIsSubmitting(false);
+          return;
+        }
+        finalReferrer = foundRef.name;
+      }
+
       const { error } = await supabase.from("applications").insert([{
         event_id: selectedEvent.id, 
         user_name: finalUserName, 
@@ -429,6 +446,8 @@ export default function Home() {
         participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
         lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
         afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
+        guest_source: userType === "guest" ? guestSource : null,
+        guest_referrer: finalReferrer,
       }]);
 
       if (error) {
@@ -438,6 +457,7 @@ export default function Home() {
         setIsGuestPaymentModalOpen(false); 
         setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
         setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
+        setGuestSource("인스타"); setGuestReferrer("");
         fetchApplicants(selectedEvent.id); setActiveTab("list"); 
       }
     } finally {
@@ -457,6 +477,8 @@ export default function Home() {
     setGuestPw("");
     setPhoneNum("");
     setUserType("member");
+    setGuestSource("인스타");
+    setGuestReferrer("");
   };
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
@@ -648,7 +670,7 @@ export default function Home() {
                     <>
                       <div className="group">
                         <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.appName}</label>
-                        <input type="text" placeholder={t.namePlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} />
+                        <input type="text" placeholder="" className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold" value={userName} onChange={(e) => setUserName(e.target.value)} onKeyDown={handleKeyDown} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="col-span-2">
@@ -667,12 +689,27 @@ export default function Home() {
                         <div className="space-y-4">
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.phoneLabel}</label>
-                            <input type="text" placeholder={t.phonePlaceholder} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
+                            <input type="text" placeholder="" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={phoneNum} onKeyDown={handleKeyDown} onChange={(e) => setPhoneNum(e.target.value)} />
                           </div>
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.guestPw}</label>
-                            <input type="password" placeholder="비밀번호" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
+                            <input type="password" placeholder="" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
                           </div>
+                          {/* 🔥 게스트 유입 경로 및 추천인 입력 필드 추가 */}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">신청 경로</label>
+                            <select value={guestSource} onChange={(e) => setGuestSource(e.target.value)} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all appearance-none">
+                              <option value="인스타">인스타</option>
+                              <option value="홍보 글">홍보 글</option>
+                              <option value="부원 소개">부원 소개</option>
+                            </select>
+                          </div>
+                          {guestSource === "부원 소개" && (
+                            <div>
+                              <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">소개해준 부원 이름</label>
+                              <input type="text" placeholder="" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestReferrer} onChange={(e) => setGuestReferrer(e.target.value)} />
+                            </div>
+                          )}
                         </div>
                       )}
                       {selectedEvent?.type === 'normal' && (
@@ -830,7 +867,7 @@ export default function Home() {
           <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <h3 className="font-black text-xl text-slate-900 mb-2">{t.adminLogin}</h3>
             <p className="text-xs text-slate-500 mb-6">{t.adminDesc}</p>
-            <input type="password" placeholder={t.pwPlaceholder} className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold tracking-widest text-center mb-6 transition-colors" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} autoFocus />
+            <input type="password" placeholder="" className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold tracking-widest text-center mb-6 transition-colors" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} autoFocus />
             <div className="flex gap-2">
               <button onClick={() => setIsAdminAuthOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
               <button onClick={handleAdminLogin} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">{t.enter}</button>
