@@ -75,6 +75,7 @@ const dict = {
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
     paymentCompleted: "입금했습니다",
+    closed: "마감된 일정입니다"
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -143,6 +144,7 @@ const dict = {
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
     paymentCompleted: "I have transferred",
+    closed: "Event closed"
   }
 };
 
@@ -189,6 +191,27 @@ export default function Home() {
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false); 
+
+  const [timeOffset, setTimeOffset] = useState<number>(0);
+
+  useEffect(() => {
+    const syncServerTime = async () => {
+      try {
+        const res = await fetch(window.location.href, { method: "HEAD", cache: "no-store" });
+        const dateHeader = res.headers.get("Date");
+        if (dateHeader) {
+          const serverTime = new Date(dateHeader).getTime();
+          const localTime = Date.now();
+          setTimeOffset(serverTime - localTime);
+        }
+      } catch (e) {
+        console.error("서버 시간 동기화 실패:", e);
+      }
+    };
+    syncServerTime();
+  }, []);
+
+  const trueCurrentTime = new Date(currentTime.getTime() + timeOffset);
 
   useEffect(() => {
     if (isModalOpen) {
@@ -291,9 +314,20 @@ export default function Home() {
 
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
-    const now = currentTime;
-    let openTime;
+    
+    const now = trueCurrentTime; // 🔥 로컬 시간이 아닌 글로벌 서버 시간!
+    const eventEnd = new Date(selectedEvent.end);
 
+    // 🔥 [복구됨] 이미 종료 시간이 지난 일정은 무조건 신청 버튼 잠금
+    if (now.getTime() > eventEnd.getTime()) {
+      return {
+        disabled: true,
+        text: t.closed,
+        style: "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300 shadow-none"
+      };
+    }
+
+    let openTime;
     if (selectedEvent.registration_start_at) {
       openTime = new Date(selectedEvent.registration_start_at);
     } else {
