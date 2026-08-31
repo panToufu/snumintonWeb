@@ -75,7 +75,9 @@ const dict = {
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
     paymentCompleted: "입금했습니다",
-    closed: "마감된 일정입니다"
+    closed: "마감된 일정입니다", 
+    levelAsk: "본인의 실력을 선택해주세요", 
+    levelAlert: "실력(레벨)을 선택하셔야 신청이 가능합니다!" 
   },
   en: {
     ongoing: "📌 Ongoing Polls & Events",
@@ -144,7 +146,9 @@ const dict = {
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
     paymentCompleted: "I have transferred",
-    closed: "Event closed"
+    closed: "Event Closed", 
+    levelAsk: "Please select your skill level", 
+    levelAlert: "Skill level selection is required!" 
   }
 };
 
@@ -168,8 +172,8 @@ export default function Home() {
   const [participationType, setParticipationType] = useState("full");
   const [lessonChoice, setLessonChoice] = useState("tue_thu");
   const [afterpartyJoin, setAfterpartyJoin] = useState(false);
+  const [userLevel, setUserLevel] = useState(""); 
 
-  // 🔥 게스트 유입 경로 및 추천인 상태 추가
   const [guestSource, setGuestSource] = useState("인스타");
   const [guestReferrer, setGuestReferrer] = useState("");
 
@@ -192,6 +196,7 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false); 
 
+  // 🔥 서버 시간 동기화
   const [timeOffset, setTimeOffset] = useState<number>(0);
 
   useEffect(() => {
@@ -224,7 +229,6 @@ export default function Home() {
 
   useEffect(() => {
     const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen || isAdminAuthOpen;
-    
     if (isAnyModalOpen) {
       window.history.pushState(null, "", window.location.href);
       const handlePopState = () => {
@@ -235,9 +239,7 @@ export default function Home() {
         setIsAdminAuthOpen(false);
       };
       window.addEventListener("popstate", handlePopState);
-      return () => {
-        window.removeEventListener("popstate", handlePopState);
-      };
+      return () => window.removeEventListener("popstate", handlePopState);
     }
   }, [isModalOpen, isRankingModalOpen, isAttendanceAuthOpen, isGuestPaymentModalOpen, isAdminAuthOpen]);
 
@@ -312,13 +314,21 @@ export default function Home() {
     setMonthlyRanking(ranking);
   };
 
+  // 🔥 [핵심 보완] 마감/오픈 철통 검증
   const getButtonStatus = () => {
     if (!selectedEvent) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
     
-    const now = trueCurrentTime; // 🔥 로컬 시간이 아닌 글로벌 서버 시간!
-    const eventEnd = new Date(selectedEvent.end);
+    const now = trueCurrentTime;
 
-    // 🔥 [복구됨] 이미 종료 시간이 지난 일정은 무조건 신청 버튼 잠금
+    // FullCalendar가 end 값을 누락시킬 경우를 대비해 DB 원본값(end_at) 사용
+    const endTimeString = selectedEvent.end || selectedEvent.end_at || selectedEvent.start_at || selectedEvent.start;
+    const eventEnd = new Date(endTimeString);
+    // 혹시라도 end_at이 아예 안 적혀있다면 시작 시간 기준 3시간 뒤로 임의 마감 처리
+    if (!selectedEvent.end && !selectedEvent.end_at) {
+      eventEnd.setHours(eventEnd.getHours() + 3);
+    }
+
+    // 마감 차단 로직 (서버 시간 기준)
     if (now.getTime() > eventEnd.getTime()) {
       return {
         disabled: true,
@@ -327,11 +337,12 @@ export default function Home() {
       };
     }
 
+    // 오픈 시간 로직
     let openTime;
     if (selectedEvent.registration_start_at) {
       openTime = new Date(selectedEvent.registration_start_at);
     } else {
-      const eventStart = new Date(selectedEvent.start);
+      const eventStart = new Date(selectedEvent.start || selectedEvent.start_at);
       openTime = new Date(eventStart);
       if (userType === "member" || userType === "ob") {
         openTime.setDate(openTime.getDate() - 2); openTime.setHours(23, 0, 0, 0);
@@ -390,7 +401,13 @@ export default function Home() {
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
     if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
-    if (status.disabled) return alert(status.text + " " + t.alertWait);
+    if (selectedEvent?.ask_level && !userLevel) return alert(t.levelAlert); 
+    
+    // 상태에 따른 알럿 분기 처리 (마감되었는지, 대기중인지)
+    if (status.disabled) {
+      if (status.text === t.closed) return alert(t.closed);
+      return alert(status.text + " " + t.alertWait);
+    }
 
     if (userType === "guest") {
       setIsGuestPaymentModalOpen(true); 
@@ -452,7 +469,6 @@ export default function Home() {
         }
       }
 
-      // 🔥 게스트 유입경로가 '부원 소개'일 때 추천인 존재 여부 검증
       let finalReferrer = null;
       if (userType === "guest" && guestSource === "부원 소개") {
         if (!guestReferrer.trim()) {
@@ -480,6 +496,7 @@ export default function Home() {
         participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
         lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
         afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
+        level: selectedEvent?.ask_level ? userLevel : null, 
         guest_source: userType === "guest" ? guestSource : null,
         guest_referrer: finalReferrer,
       }]);
@@ -490,7 +507,7 @@ export default function Home() {
         alert(`${finalUserName}${t.alertSuccess}`); 
         setIsGuestPaymentModalOpen(false); 
         setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
-        setLessonChoice("tue_thu"); setAfterpartyJoin(false); 
+        setLessonChoice("tue_thu"); setAfterpartyJoin(false); setUserLevel("");
         setGuestSource("인스타"); setGuestReferrer("");
         fetchApplicants(selectedEvent.id); setActiveTab("list"); 
       }
@@ -511,12 +528,46 @@ export default function Home() {
     setGuestPw("");
     setPhoneNum("");
     setUserType("member");
+    setUserLevel("");
     setGuestSource("인스타");
     setGuestReferrer("");
   };
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
-  const hasOngoingItems = specialEvents.length > 0 || polls.length > 0;
+  
+  const unifiedList = [
+    ...specialEvents.map(ev => ({ type: 'event', data: ev, id: `event-${ev.id}` })),
+    ...polls.map(poll => ({ type: 'poll', data: poll, id: `poll-${poll.id}` }))
+  ].sort((a, b) => {
+    // 캘린더 라이브러리 누락 방지용 3중 체크
+    const getEventEnd = (ev: any) => {
+      if (ev.end) return new Date(ev.end).getTime();
+      if (ev.extendedProps?.end_at) return new Date(ev.extendedProps.end_at).getTime();
+      return new Date(ev.start).getTime() + (3 * 60 * 60 * 1000);
+    };
+
+    const isAClosed = a.type === 'event' 
+      ? (trueCurrentTime.getTime() > getEventEnd(a.data))
+      : (a.data.deadline && trueCurrentTime.getTime() > new Date(a.data.deadline).getTime());
+    
+    const isBClosed = b.type === 'event' 
+      ? (trueCurrentTime.getTime() > getEventEnd(b.data))
+      : (b.data.deadline && trueCurrentTime.getTime() > new Date(b.data.deadline).getTime());
+
+    if (isAClosed !== isBClosed) return isAClosed ? 1 : -1;
+
+    const dateA = a.type === 'event' 
+      ? new Date(a.data.start).getTime() 
+      : (a.data.deadline ? new Date(a.data.deadline).getTime() : new Date(a.data.created_at).getTime());
+    
+    const dateB = b.type === 'event' 
+      ? new Date(b.data.start).getTime() 
+      : (b.data.deadline ? new Date(b.data.deadline).getTime() : new Date(b.data.created_at).getTime());
+
+    return dateA - dateB;
+  });
+
+  const hasOngoingItems = unifiedList.length > 0;
 
   return (
     <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative flex flex-col">
@@ -529,21 +580,35 @@ export default function Home() {
       </div>
 
       <div className="flex items-center justify-center gap-3 my-8">
-        <img 
-          src="/logo.png" 
-          alt="Snuminton Logo" 
-          className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" 
-        />
-        <h1 
-          className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" 
-          style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}
-        >
-          SNUMINTON
-        </h1>
+        <img src="/logo.png" alt="Snuminton Logo" className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" />
+        <h1 className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}>SNUMINTON</h1>
       </div>
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
-        <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale={lang === "ko" ? "ko" : "en"} displayEventTime={false} eventClick={(info) => { const ev = info.event; setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} />
+        <FullCalendar 
+          plugins={[dayGridPlugin, interactionPlugin]} 
+          initialView="dayGridMonth" 
+          events={events} 
+          height="auto" 
+          locale={lang === "ko" ? "ko" : "en"} 
+          displayEventTime={true} 
+          eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: false, hour12: false }}
+          eventClick={(info) => { 
+            const ev = info.event; 
+            // 🔥 start, end 누락 방지용 로직
+            setSelectedEvent({ 
+              id: ev.id, 
+              title: ev.title, 
+              start: ev.extendedProps?.start_at || ev.start, 
+              end: ev.extendedProps?.end_at || ev.end, 
+              ...ev.extendedProps 
+            }); 
+            fetchApplicants(ev.id); 
+            setActiveTab("info"); 
+            setUserType("member"); 
+            setIsModalOpen(true); 
+          }} 
+        />
       </div>
 
       <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
@@ -551,35 +616,54 @@ export default function Home() {
         
         <div className="flex flex-col gap-3 min-h-[250px]">
           {hasOngoingItems ? (
-            <>
-              {specialEvents.map((ev, idx) => (
-                <div key={`special-${idx}`} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
-                  <div>
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
-                    <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
+            unifiedList.map((item) => {
+              if (item.type === 'event') {
+                const ev = item.data;
+                const eventEndTime = ev.end ? new Date(ev.end).getTime() : (ev.extendedProps?.end_at ? new Date(ev.extendedProps.end_at).getTime() : new Date(ev.start).getTime() + 3*60*60*1000);
+                const isClosed = trueCurrentTime.getTime() > eventEndTime;
+                
+                return (
+                  <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
+                    <div>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
+                      <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        {ev.end && ` ~ ${new Date(ev.end).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.extendedProps?.start_at || ev.start, end: ev.extendedProps?.end_at || ev.end, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} 
+                      className={`w-full md:w-auto px-6 py-2.5 font-bold text-sm rounded-xl transition-colors mt-2 md:mt-0 ${isClosed ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                    >
+                      {isClosed ? t.closed : t.applyView}
+                    </button>
                   </div>
-                  <button onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.start, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} className="w-full md:w-auto px-6 py-2.5 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 transition-colors mt-2 md:mt-0">{t.applyView}</button>
-                </div>
-              ))}
-
-              {polls.map((poll) => (
-                <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-shadow">
-                  <div>
-                    <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
-                    <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
-                    {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
+                );
+              } else {
+                const poll = item.data;
+                const isPollClosed = poll.deadline && trueCurrentTime.getTime() > new Date(poll.deadline).getTime();
+                
+                return (
+                  <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPollClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
+                    <div>
+                      <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
+                      <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
+                      {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
+                    </div>
+                    <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
+                      {isPollClosed ? (
+                        <span className="px-4 py-2 bg-slate-100 text-slate-400 font-bold text-sm rounded-xl w-full md:w-auto text-center">{t.closed}</span>
+                      ) : poll.poll_type === 'text' ? (
+                        <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
+                      ) : (
+                        <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
+                      )}
+                    </div>
                   </div>
-                  <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
-                    {poll.poll_type === 'text' ? (
-                      <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
-                    ) : (
-                      <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </>
+                );
+              }
+            })
           ) : (
             <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
               <span className="text-2xl mb-3 opacity-60">🍃</span>
@@ -660,7 +744,7 @@ export default function Home() {
                   </div>
                   <h2 className="text-3xl font-black text-slate-900 leading-tight mb-4">{selectedEvent?.title}</h2>
                   <div className="grid grid-cols-1 gap-3 text-slate-600">
-                    <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { dateStyle: 'full', timeStyle: 'short' })}</div>
+                    <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}</div>
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📍</span>{selectedEvent?.location || t.unspecified}</div>
                     {selectedEvent?.allow_registration !== false && (
                       <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
@@ -719,6 +803,18 @@ export default function Home() {
                           )}
                         </div>
                       </div>
+
+                      {selectedEvent?.ask_level && (
+                        <div className="space-y-2 pt-2">
+                          <label className="block text-xs font-bold text-slate-400 ml-1">{t.levelAsk}</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <button onClick={() => setUserLevel("A/B")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'A/B' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>상</button>
+                            <button onClick={() => setUserLevel("C")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'C' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>중</button>
+                            <button onClick={() => setUserLevel("D/초심")} className={`py-3 text-sm font-bold rounded-xl border-2 transition-all ${userLevel === 'D/초심' ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-slate-100 text-slate-400'}`}>하</button>
+                          </div>
+                        </div>
+                      )}
+
                       {userType === "guest" && (
                         <div className="space-y-4">
                           <div>
@@ -729,7 +825,6 @@ export default function Home() {
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.guestPw}</label>
                             <input type="password" placeholder="" className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all" value={guestPw} onKeyDown={handleKeyDown} onChange={(e) => setGuestPw(e.target.value)} />
                           </div>
-                          {/* 🔥 게스트 유입 경로 및 추천인 입력 필드 추가 */}
                           <div>
                             <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">신청 경로</label>
                             <select value={guestSource} onChange={(e) => setGuestSource(e.target.value)} className="w-full bg-orange-50 border-2 border-orange-100 rounded-2xl p-4 outline-none focus:border-orange-400 text-slate-900 font-semibold transition-all appearance-none">
@@ -835,6 +930,15 @@ export default function Home() {
                                   {app.lesson_choice === 'tue_thu' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.tueThu}</span>}
                                   {app.lesson_choice === 'sat' && <span className="text-[8px] font-bold bg-blue-100 text-blue-600 px-1 py-0.5 rounded">{t.sat}</span>}
                                   {app.afterparty_join && <span className="text-[10px]">🍻</span>}
+                                  {app.level && (
+                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                      app.level === 'A/B' ? 'bg-red-50 text-red-600 border-red-200' :
+                                      app.level === 'C' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                      'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                    }`}>
+                                      {app.level === 'A/B' ? '상' : app.level === 'C' ? '중' : '하'}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap ml-auto text-right">
