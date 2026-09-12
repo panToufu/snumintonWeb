@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "hash:password": "node scripts/generate-password-hash.mjs",
+    "hash:guest-password": "node scripts/generate-password-hash.mjs GUEST_PASSWORD_HASH"
   },
   "dependencies": {
     "@fullcalendar/daygrid": "^6.1.20",

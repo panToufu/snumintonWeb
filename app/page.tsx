@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { supabase } from "../supabase";
+
+async function publicRequest<T>(path: string, init?: RequestInit) {
+  const response = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+  });
+  const body = await response.json() as T & { message?: string };
+  if (!response.ok) throw new Error(body.message ?? "요청을 처리하지 못했습니다.");
+  return body;
+}
 
 const dict = {
   ko: {
@@ -153,8 +161,6 @@ const dict = {
 };
 
 export default function Home() {
-  const router = useRouter();
-  
   const [lang, setLang] = useState<"ko" | "en">("ko");
   const t = dict[lang]; 
 
@@ -183,9 +189,6 @@ export default function Home() {
   const [monthlyRanking, setMonthlyRanking] = useState<any[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<any[]>([]); 
 
-  const [isAdminAuthOpen, setIsAdminAuthOpen] = useState(false);
-  const [adminPwInput, setAdminPwInput] = useState("");
-
   const [isAttendanceAuthOpen, setIsAttendanceAuthOpen] = useState(false);
   const [attendanceAuthName, setAttendanceAuthName] = useState("");
   const [isAttendanceAuthenticated, setIsAttendanceAuthenticated] = useState(false);
@@ -199,23 +202,6 @@ export default function Home() {
   // 🔥 서버 시간 동기화
   const [timeOffset, setTimeOffset] = useState<number>(0);
 
-  useEffect(() => {
-    const syncServerTime = async () => {
-      try {
-        const res = await fetch(window.location.href, { method: "HEAD", cache: "no-store" });
-        const dateHeader = res.headers.get("Date");
-        if (dateHeader) {
-          const serverTime = new Date(dateHeader).getTime();
-          const localTime = Date.now();
-          setTimeOffset(serverTime - localTime);
-        }
-      } catch (e) {
-        console.error("서버 시간 동기화 실패:", e);
-      }
-    };
-    syncServerTime();
-  }, []);
-
   const trueCurrentTime = new Date(currentTime.getTime() + timeOffset);
 
   useEffect(() => {
@@ -228,7 +214,7 @@ export default function Home() {
   }, [isModalOpen]);
 
   useEffect(() => {
-    const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen || isAdminAuthOpen;
+    const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen;
     if (isAnyModalOpen) {
       window.history.pushState(null, "", window.location.href);
       const handlePopState = () => {
@@ -236,27 +222,24 @@ export default function Home() {
         setIsRankingModalOpen(false);
         setIsAttendanceAuthOpen(false);
         setIsGuestPaymentModalOpen(false);
-        setIsAdminAuthOpen(false);
       };
       window.addEventListener("popstate", handlePopState);
       return () => window.removeEventListener("popstate", handlePopState);
     }
-  }, [isModalOpen, isRankingModalOpen, isAttendanceAuthOpen, isGuestPaymentModalOpen, isAdminAuthOpen]);
+  }, [isModalOpen, isRankingModalOpen, isAttendanceAuthOpen, isGuestPaymentModalOpen]);
 
   useEffect(() => {
     const isAuth = localStorage.getItem("snuminton_attendance_auth");
     if (isAuth === "true") setIsAttendanceAuthenticated(true);
-    fetchEvents(); 
-    fetchPolls(); 
-    fetchExecutives(); 
+    fetchPublicData();
   }, []);
 
   useEffect(() => { if (isRankingModalOpen) fetchRanking(); }, [isRankingModalOpen, rankingMonth, rankingYear]);
 
-  const fetchEvents = async () => {
-    const { data } = await supabase.from("events").select("*");
-    if (data) {
-      setEvents(data.map(ev => ({ 
+  const fetchPublicData = async () => {
+    try {
+      const data = await publicRequest<{ events: any[]; polls: any[]; executives: any[]; serverTime: string }>("/api/public/bootstrap");
+      setEvents(data.events.map(ev => ({
         id: ev.id, 
         title: ev.title, 
         start: ev.start_at, 
@@ -264,43 +247,30 @@ export default function Home() {
         color: ev.type === 'normal' ? '#3b82f6' : ev.type === 'lesson' ? '#8b5cf6' : '#ec4899',
         extendedProps: { ...ev } 
       })));
+      setPolls(data.polls);
+      setExecutives(data.executives);
+      setTimeOffset(new Date(data.serverTime).getTime() - Date.now());
+    } catch (error) {
+      console.error("공개 초기 데이터 조회 실패:", error);
     }
-  };
-
-  const fetchPolls = async () => {
-    const { data } = await supabase.from("polls").select("*").order("created_at", { ascending: false });
-    if (data) setPolls(data);
-  };
-
-  const fetchExecutives = async () => {
-    const { data } = await supabase.from("members").select("name, user_type").in("user_type", ["회장", "부회장", "임원진"]);
-    if (data) setExecutives(data);
   };
 
   const fetchApplicants = async (eventId: string) => {
-    const { data } = await supabase.from("applications").select("*").eq("event_id", eventId).order("applied_at", { ascending: true });
-    if (data) setApplicants(data);
+    try {
+      const { data } = await publicRequest<{ data: any[] }>(`/api/public/applications/${encodeURIComponent(eventId)}`);
+      setApplicants(data);
+    } catch (error) {
+      console.error("신청 명단 조회 실패:", error);
+      setApplicants([]);
+    }
   };
 
   const fetchRanking = async () => {
-    const { data: membersData } = await supabase.from("members").select("*");
-    const membersList = membersData || [];
-    const startDate = new Date(rankingYear, rankingMonth - 1, 1).toISOString();
-    const endDate = new Date(rankingYear, rankingMonth, 1).toISOString();
-
-    const { data: monthEvents } = await supabase.from("events").select("id, start_at, title, type").gte("start_at", startDate).lt("start_at", endDate).order("start_at", { ascending: true });
-    const eventsList = monthEvents || [];
-    setMonthEventsList(eventsList); 
-
-    const eventIds = eventsList.map(e => e.id);
-    if (eventIds.length === 0) {
-      setMonthlyRanking(membersList.map(m => ({ ...m, count: 0, attendanceRecord: {} })).sort((a, b) => a.name.localeCompare(b.name)));
-      return;
-    }
-
-    const { data: apps } = await supabase.from("applications").select("user_name, event_id, attendance_status").in("event_id", eventIds);
-    const ranking = membersList.map(m => {
-      const memberApps = apps?.filter(a => a.user_name === m.name) || [];
+    try {
+      const { members, events: eventsList, applications: apps } = await publicRequest<{ members: any[]; events: any[]; applications: any[] }>(`/api/public/attendance?year=${rankingYear}&month=${rankingMonth}`);
+      setMonthEventsList(eventsList);
+      const ranking = members.map(m => {
+        const memberApps = apps.filter(a => a.user_name === m.name) || [];
       let count = 0;
       const attendanceRecord: Record<string, string> = {};
       memberApps.forEach(a => {
@@ -309,9 +279,14 @@ export default function Home() {
         if (status === 'present' || status === 'late') count++;
       });
       return { ...m, count, attendanceRecord };
-    });
-    ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-    setMonthlyRanking(ranking);
+      });
+      ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      setMonthlyRanking(ranking);
+    } catch (error) {
+      console.error("출석 데이터 조회 실패:", error);
+      setMonthlyRanking([]);
+      setMonthEventsList([]);
+    }
   };
 
   // 🔥 [핵심 보완] 마감/오픈 철통 검증
@@ -370,37 +345,24 @@ export default function Home() {
 
   const handleAttendanceAuth = async () => {
     if (!attendanceAuthName) return alert(t.alertName);
-    const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
-    if (!membersList) return alert(t.alertNotRegistered);
-    const input = attendanceAuthName.trim().toLowerCase();
-    const matchedMember = membersList.find(m => {
-      const dbName = m.name.trim().toLowerCase();
-      if (dbName === input) return true;
-      if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
-        const dbParts = dbName.split(/\s+/);
-        const inputParts = input.split(/\s+/);
-        if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
-        if (dbParts.includes(input)) return true;
-        const initials = dbParts.map((p:string) => p[0]).join('');
-        if (initials === input) return true;
-      }
-      return false;
-    });
+    try {
+      const { valid } = await publicRequest<{ valid: boolean }>(`/api/public/members/verify?name=${encodeURIComponent(attendanceAuthName)}`);
+      if (!valid) return alert(t.alertNotRegistered);
 
-    if (matchedMember) {
       localStorage.setItem("snuminton_attendance_auth", "true");
       setIsAttendanceAuthenticated(true);
       setIsAttendanceAuthOpen(false);
       setAttendanceAuthName("");
       setIsRankingModalOpen(true);
-    } else alert(t.alertNotRegistered);
+    } catch (error) {
+      alert(t.alertError + (error instanceof Error ? error.message : ""));
+    }
   };
 
   const handleApplyClick = () => {
     if (isSubmitting) return; 
     if (!userName) return alert(t.alertName);
     if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
-    if (userType === "guest" && guestPw !== "5678") return alert(t.alertGuestPw);
     if (selectedEvent?.ask_level && !userLevel) return alert(t.levelAlert); 
     
     // 상태에 따른 알럿 분기 처리 (마감되었는지, 대기중인지)
@@ -421,104 +383,35 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      if (selectedEvent?.type === 'special' && userType !== 'member') {
-        alert("행사는 부원만 신청 가능합니다.");
-        return;
-      }
-      if (userType === 'guest' && selectedEvent?.allow_guests === false) {
-        alert("해당 일정은 게스트 신청을 받지 않습니다.");
-        return;
-      }
+      if (!selectedEvent?.id) return;
+      const { application } = await publicRequest<{ application: { user_name: string } }>("/api/public/applications", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: selectedEvent.id,
+          user_name: userName,
+          user_type: userType,
+          guest_password: userType === "guest" ? guestPw : undefined,
+          phone_number: userType === "guest" ? phoneNum : undefined,
+          participation_type: participationType,
+          lesson_choice: lessonChoice,
+          afterparty_join: afterpartyJoin,
+          level: userLevel,
+          guest_source: guestSource,
+          guest_referrer: guestReferrer,
+        }),
+      });
 
-      let finalUserName = userName; 
-
-      if (userType === "member") {
-        const { data: membersList } = await supabase.from("members").select("id, name").in("user_type", ["member", "ob", "회장", "부회장", "임원진"]);
-        if (!membersList) {
-          alert(t.alertNotRegistered);
-          return;
-        }
-        
-        const input = userName.trim().toLowerCase();
-        const matchedMember = membersList.find(m => {
-          const dbName = m.name.trim().toLowerCase();
-          if (dbName === input) return true;
-          if (/[a-z]/.test(dbName) || /[a-z]/.test(input)) {
-            const dbParts = dbName.split(/\s+/);
-            const inputParts = input.split(/\s+/);
-            if (dbParts.slice().sort().join('') === inputParts.slice().sort().join('')) return true;
-            if (dbParts.includes(input)) return true;
-            const initials = dbParts.map((p:string) => p[0]).join('');
-            if (initials === input) return true;
-          }
-          return false;
-        });
-        
-        if (!matchedMember) {
-          alert(t.alertNotRegistered);
-          return;
-        }
-        finalUserName = matchedMember.name; 
-
-        const isAlreadyApplied = applicants.some(
-          (app) => app.user_name === finalUserName && app.user_type !== 'guest' && app.user_type !== 'ob'
-        );
-        if (isAlreadyApplied) {
-          alert(`이미 신청된 이름(${finalUserName})입니다. 명단을 다시 확인해주세요!`);
-          return;
-        }
-      }
-
-      let finalReferrer = null;
-      if (userType === "guest" && guestSource === "부원 소개") {
-        if (!guestReferrer.trim()) {
-          alert("소개해준 부원 이름을 입력해주세요!");
-          setIsSubmitting(false);
-          return;
-        }
-        const { data: membersList } = await supabase.from("members").select("name");
-        const refInput = guestReferrer.trim().toLowerCase();
-        const foundRef = membersList?.find(m => m.name.trim().toLowerCase() === refInput);
-        if (!foundRef) {
-          alert("입력한 추천인 이름이 부원 명단에 없습니다. 정확히 확인해주세요!");
-          setIsSubmitting(false);
-          return;
-        }
-        finalReferrer = foundRef.name;
-      }
-
-      const { error } = await supabase.from("applications").insert([{
-        event_id: selectedEvent.id, 
-        user_name: finalUserName, 
-        user_type: userType,
-        guest_password: userType === "guest" ? guestPw : null,
-        phone_number: userType === "guest" ? phoneNum : null, 
-        participation_type: selectedEvent?.type === 'normal' ? participationType : 'full',
-        lesson_choice: selectedEvent?.type === 'lesson' ? lessonChoice : null,
-        afterparty_join: selectedEvent?.has_afterparty ? afterpartyJoin : false,
-        level: selectedEvent?.ask_level ? userLevel : null, 
-        guest_source: userType === "guest" ? guestSource : null,
-        guest_referrer: finalReferrer,
-      }]);
-
-      if (error) {
-        alert(t.alertError + error.message);
-      } else {
-        alert(`${finalUserName}${t.alertSuccess}`); 
-        setIsGuestPaymentModalOpen(false); 
-        setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
-        setLessonChoice("tue_thu"); setAfterpartyJoin(false); setUserLevel("");
-        setGuestSource("인스타"); setGuestReferrer("");
-        fetchApplicants(selectedEvent.id); setActiveTab("list"); 
-      }
+      alert(`${application.user_name}${t.alertSuccess}`);
+      setIsGuestPaymentModalOpen(false);
+      setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
+      setLessonChoice("tue_thu"); setAfterpartyJoin(false); setUserLevel("");
+      setGuestSource("인스타"); setGuestReferrer("");
+      fetchApplicants(selectedEvent.id); setActiveTab("list");
+    } catch (error) {
+      alert(t.alertError + (error instanceof Error ? error.message : ""));
     } finally {
       setIsSubmitting(false); 
     }
-  };
-
-  const handleAdminLogin = () => {
-    if (adminPwInput === "4321") { setIsAdminAuthOpen(false); setAdminPwInput(""); router.push("/admin"); } 
-    else { alert(t.alertAdminFail); setAdminPwInput(""); }
   };
 
   const resetAndCloseModal = () => {
@@ -576,7 +469,7 @@ export default function Home() {
         <button onClick={() => setLang(lang === "ko" ? "en" : "ko")} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-full transition-colors shadow-sm">
           {lang === "ko" ? "🌐 EN" : "🌐 KO"}
         </button>
-        <button onClick={() => setIsAdminAuthOpen(true)} className="text-2xl opacity-30 hover:opacity-100 transition-opacity cursor-pointer" title="Admin">⚙️</button>
+        <a href="/admin/login" className="text-2xl opacity-30 hover:opacity-100 transition-opacity" title="Admin" aria-label="운영진 로그인">⚙️</a>
       </div>
 
       <div className="flex items-center justify-center gap-3 my-8">
@@ -995,20 +888,6 @@ export default function Home() {
             <div className="flex gap-2 w-full">
               <button onClick={() => setIsGuestPaymentModalOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
               <button disabled={isSubmitting} onClick={executeApplication} className="flex-1 py-3.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/30">{isSubmitting ? "처리 중..." : t.paymentCompleted}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isAdminAuthOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4" onClick={() => setIsAdminAuthOpen(false)}>
-          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-            <h3 className="font-black text-xl text-slate-900 mb-2">{t.adminLogin}</h3>
-            <p className="text-xs text-slate-500 mb-6">{t.adminDesc}</p>
-            <input type="password" placeholder="" className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-xl outline-none focus:border-blue-500 text-slate-900 font-bold tracking-widest text-center mb-6 transition-colors" value={adminPwInput} onChange={e => setAdminPwInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} autoFocus />
-            <div className="flex gap-2">
-              <button onClick={() => setIsAdminAuthOpen(false)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors">{t.cancel}</button>
-              <button onClick={handleAdminLogin} className="flex-1 py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">{t.enter}</button>
             </div>
           </div>
         </div>
