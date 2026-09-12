@@ -231,8 +231,16 @@ export default function Home() {
   }, [isModalOpen, isRankingModalOpen, isAttendanceAuthOpen, isGuestPaymentModalOpen]);
 
   useEffect(() => {
-    const isAuth = localStorage.getItem("snuminton_attendance_auth");
-    if (isAuth === "true") setIsAttendanceAuthenticated(true);
+    const restoreAttendanceAccess = async () => {
+      try {
+        const { authorized } = await publicRequest<{ authorized: boolean }>("/api/public/attendance/access");
+        setIsAttendanceAuthenticated(authorized);
+      } catch {
+        setIsAttendanceAuthenticated(false);
+      }
+    };
+
+    void restoreAttendanceAccess();
     fetchPublicData();
   }, []);
 
@@ -351,10 +359,12 @@ export default function Home() {
   const handleAttendanceAuth = async () => {
     if (!attendanceAuthName) return alert(t.alertName);
     try {
-      const { valid } = await publicRequest<{ valid: boolean }>(`/api/public/members/verify?name=${encodeURIComponent(attendanceAuthName)}`);
+      const { valid } = await publicRequest<{ valid: boolean }>("/api/public/members/verify", {
+        method: "POST",
+        body: JSON.stringify({ name: attendanceAuthName }),
+      });
       if (!valid) return alert(t.alertNotRegistered);
 
-      localStorage.setItem("snuminton_attendance_auth", "true");
       setIsAttendanceAuthenticated(true);
       setIsAttendanceAuthOpen(false);
       setAttendanceAuthName("");

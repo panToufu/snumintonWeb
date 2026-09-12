@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
+import { hasAttendanceAccess } from "@/lib/attendance-access";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  if (!(await hasAttendanceAccess())) {
+    return NextResponse.json({ message: "출석 확인을 위해 이름을 다시 입력해주세요." }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const year = Number(url.searchParams.get("year"));
   const month = Number(url.searchParams.get("month"));
