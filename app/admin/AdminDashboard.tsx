@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import FullCalendar from "@fullcalendar/react";
+import type { EventClickArg } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import type { AdminCalendarEvent, AttendanceEvent, AttendanceRanking, ClubApplication, ClubEvent, ClubMember } from "@/lib/club-types";
 
 async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -12,6 +14,7 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
   const body = await response.json() as T & { message?: string };
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   if (response.status === 401) window.location.assign("/admin/login");
   if (!response.ok) throw new Error(body.message ?? "요청을 처리하지 못했습니다.");
   return body;
@@ -23,13 +26,13 @@ export default function AdminDashboard() {
   // 🔥 'fees' 탭을 'submission' (제출 확인)으로 유지/확장
   const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "submission" | "monthly" | "members" | "register" | "special" | "executives">("daily"); 
   
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<AdminCalendarEvent[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedEventTitle, setSelectedEventTitle] = useState<string>("");
   const [selectedEventDate, setSelectedEventDate] = useState<Date | null>(null);
-  const [applicants, setApplicants] = useState<any[]>([]);
+  const [applicants, setApplicants] = useState<ClubApplication[]>([]);
   
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<ClubMember[]>([]);
   const [bulkMemberNames, setBulkMemberNames] = useState("");
   const [newMemberType, setNewMemberType] = useState("member");
 
@@ -37,12 +40,12 @@ export default function AdminDashboard() {
   const [newExecRole, setNewExecRole] = useState("임원진");
 
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentYear] = useState(new Date().getFullYear());
   
-  const [monthlyRanking, setMonthlyRanking] = useState<any[]>([]);
-  const [monthEventsList, setMonthEventsList] = useState<any[]>([]);
+  const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
+  const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
 
-  const [regYear, setRegYear] = useState(new Date().getFullYear());
+  const [regYear] = useState(new Date().getFullYear());
   const [regMonth, setRegMonth] = useState(new Date().getMonth() + 1);
   const [regDates, setRegDates] = useState<string[]>([]); 
   const [regLocation, setRegLocation] = useState("구체");
@@ -59,7 +62,7 @@ export default function AdminDashboard() {
   const [editAllowGuests, setEditAllowGuests] = useState(true);
 
   const [isEditAppModalOpen, setIsEditAppModalOpen] = useState(false);
-  const [editAppTarget, setEditAppTarget] = useState<any>(null);
+  const [editAppTarget, setEditAppTarget] = useState<ClubApplication | null>(null);
 
   const [spEventTitle, setSpEventTitle] = useState("");
   const [spEventStartDate, setSpEventStartDate] = useState(""); 
@@ -83,10 +86,6 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (adminTab === "monthly") calculateRanking();
-  }, [adminTab, currentMonth, currentYear, members]);
-
-  useEffect(() => {
     if (adminTab === "register") {
       const daysInMonth = new Date(regYear, regMonth, 0).getDate();
       const defaultDates: string[] = [];
@@ -105,12 +104,12 @@ export default function AdminDashboard() {
   }, [regYear, regMonth, adminTab]);
 
   const fetchEvents = async () => {
-    const { data } = await adminRequest<{ data: any[] }>("/api/admin/events");
+    const { data } = await adminRequest<{ data: ClubEvent[] }>("/api/admin/events");
     if (data) {
-      const formattedEvents = data.map(ev => ({ 
+      const formattedEvents: AdminCalendarEvent[] = data.map(ev => ({
         ...ev, 
         start: ev.start_at, 
-        end: ev.end_at, 
+        end: ev.end_at ?? undefined,
         id: ev.id,
         color: ev.type === 'normal' ? '#3b82f6' : ev.type === 'lesson' ? '#8b5cf6' : '#ec4899'
       }));
@@ -119,12 +118,12 @@ export default function AdminDashboard() {
   };
 
   const fetchMembers = async () => {
-    const { data } = await adminRequest<{ data: any[] }>("/api/admin/members");
+    const { data } = await adminRequest<{ data: ClubMember[] }>("/api/admin/members");
     if (data) setMembers(data);
   };
 
   const fetchApplicants = async (eventId: string) => {
-    const { data } = await adminRequest<{ data: any[] }>(`/api/admin/events/${eventId}/applications`);
+    const { data } = await adminRequest<{ data: ClubApplication[] }>(`/api/admin/events/${eventId}/applications`);
     if (data) {
       const currentEventCapacity = events.find(e => e.id === eventId)?.max_capacity || 50;
 
@@ -144,15 +143,16 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleEventClickForEdit = (info: any) => {
+  const handleEventClickForEdit = (info: EventClickArg) => {
     const ev = info.event;
-    setEditEventId(ev.id); 
-    setEditTitle(ev.title); 
-    setEditLocation(ev.extendedProps.location || "");
-    setEditCapacity(ev.extendedProps.max_capacity || 50); 
-    setEditCountAttendance(ev.extendedProps.is_attendance_counted ?? true);
-    setEditExecs(ev.extendedProps.participating_execs || []);
-    setEditAllowGuests(ev.extendedProps.allow_guests ?? true); 
+    const eventProps = ev.extendedProps as Partial<ClubEvent>;
+    setEditEventId(ev.id);
+    setEditTitle(ev.title);
+    setEditLocation(eventProps.location || "");
+    setEditCapacity(eventProps.max_capacity || 50);
+    setEditCountAttendance(eventProps.is_attendance_counted ?? true);
+    setEditExecs(eventProps.participating_execs ?? []);
+    setEditAllowGuests(eventProps.allow_guests ?? true);
     setIsEditModalOpen(true);
   };
 
@@ -218,6 +218,7 @@ export default function AdminDashboard() {
   };
 
   const handleSaveAppEdit = async () => {
+    if (!editAppTarget) return;
     try {
       await adminRequest(`/api/admin/applications/${editAppTarget.id}`, { method: "PATCH", body: JSON.stringify({ participation_type: editAppTarget.participation_type, lesson_choice: editAppTarget.lesson_choice, afterparty_join: editAppTarget.afterparty_join, level: editAppTarget.level }) });
       setIsEditAppModalOpen(false);
@@ -231,12 +232,12 @@ export default function AdminDashboard() {
     catch (error) { alert("삭제 오류: " + (error as Error).message); }
   };
 
-  const calculateRanking = async () => {
+  const calculateRanking = useCallback(async () => {
     if (members.length === 0) return;
     
     const activeMembers = members.filter(m => m.user_type !== 'ob');
 
-    const { events: eventsList, applications: apps } = await adminRequest<{ events: any[]; applications: any[] }>(`/api/admin/attendance-report?year=${currentYear}&month=${currentMonth}`);
+    const { events: eventsList, applications: apps } = await adminRequest<{ events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/admin/attendance-report?year=${currentYear}&month=${currentMonth}`);
     setMonthEventsList(eventsList);
     const eventIds = eventsList.map(e => e.id);
     
@@ -255,7 +256,7 @@ export default function AdminDashboard() {
     });
     ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     setMonthlyRanking(ranking);
-  };
+  }, [currentMonth, currentYear, members]);
 
   const toggleRegDate = (dateStr: string) => {
     setRegDates(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
@@ -339,6 +340,10 @@ export default function AdminDashboard() {
     return <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">부원</span>;
   };
 
+  useEffect(() => {
+    if (adminTab === "monthly") void calculateRanking();
+  }, [adminTab, calculateRanking]);
+
   const handleLogout = async () => {
     await fetch("/api/admin/logout", { method: "POST" });
     router.replace("/");
@@ -418,7 +423,7 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm mb-6">
-                      {attendanceDisplayList.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">출석 체크할 부원이 없습니다.</div> : attendanceDisplayList.map((app, i) => {
+                      {attendanceDisplayList.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">출석 체크할 부원이 없습니다.</div> : attendanceDisplayList.map((app) => {
                           const status = app.attendance_status || 'none';
                           
                           let partialText = "";
@@ -544,7 +549,7 @@ export default function AdminDashboard() {
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
                               <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '제출 완료' : '미제출'}</span>
-                              <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, app.is_paid)} className="w-4 h-4 accent-indigo-500 rounded" />
+                              <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, Boolean(app.is_paid))} className="w-4 h-4 accent-indigo-500 rounded" />
                             </label>
                           </div>
                         ))}
@@ -566,12 +571,12 @@ export default function AdminDashboard() {
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
                               <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '납부 완료' : '미납'}</span>
-                              <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, app.is_paid)} className="w-4 h-4 accent-indigo-500 rounded" />
+                              <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, Boolean(app.is_paid))} className="w-4 h-4 accent-indigo-500 rounded" />
                             </label>
                           </div>
                         ))}
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-3 text-center">※ '📝 현장 출석 체크' 탭에서 불참(❌)으로 체크된 부원만 이곳에 표시됩니다.</p>
+                      <p className="text-[10px] text-slate-400 mt-3 text-center">※ &apos;📝 현장 출석 체크&apos; 탭에서 불참(❌)으로 체크된 부원만 이곳에 표시됩니다.</p>
                     </div>
 
                     {/* 3. 게스트 (게스트비 및 유입경로 확인) */}
@@ -597,7 +602,7 @@ export default function AdminDashboard() {
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
                               <span className={`text-xs font-bold ${app.is_paid ? 'text-indigo-600' : 'text-slate-400'}`}>{app.is_paid ? '입금 완료' : '미납'}</span>
-                              <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, app.is_paid)} className="w-4 h-4 accent-indigo-500 rounded" />
+                                <input type="checkbox" checked={app.is_paid || false} onChange={() => togglePaymentStatus(app.id, Boolean(app.is_paid))} className="w-4 h-4 accent-indigo-500 rounded" />
                             </label>
                           </div>
                         ))}

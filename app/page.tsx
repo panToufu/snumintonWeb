@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import type { AttendanceEvent, AttendanceRanking, CalendarEvent, ClubApplication, ClubEvent, ClubMember, ClubPoll, SelectedClubEvent } from "@/lib/club-types";
 
 async function publicRequest<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, {
@@ -164,15 +166,15 @@ export default function Home() {
   const [lang, setLang] = useState<"ko" | "en">("ko");
   const t = dict[lang]; 
 
-  const [events, setEvents] = useState<any[]>([]);
-  const [polls, setPolls] = useState<any[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [polls, setPolls] = useState<ClubPoll[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
-  const [applicants, setApplicants] = useState<any[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<SelectedClubEvent | null>(null);
+  const [applicants, setApplicants] = useState<ClubApplication[]>([]);
   const [activeTab, setActiveTab] = useState<"info" | "list">("info");
   
   const [userName, setUserName] = useState("");
-  const [userType, setUserType] = useState("member");
+  const [userType, setUserType] = useState<"member" | "ob" | "guest">("member");
   const [guestPw, setGuestPw] = useState("");
   const [phoneNum, setPhoneNum] = useState(""); 
   const [participationType, setParticipationType] = useState("full");
@@ -185,15 +187,15 @@ export default function Home() {
 
   const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
   const [rankingMonth, setRankingMonth] = useState(new Date().getMonth() + 1);
-  const [rankingYear, setRankingYear] = useState(new Date().getFullYear());
-  const [monthlyRanking, setMonthlyRanking] = useState<any[]>([]);
-  const [monthEventsList, setMonthEventsList] = useState<any[]>([]); 
+  const [rankingYear] = useState(new Date().getFullYear());
+  const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
+  const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
 
   const [isAttendanceAuthOpen, setIsAttendanceAuthOpen] = useState(false);
   const [attendanceAuthName, setAttendanceAuthName] = useState("");
   const [isAttendanceAuthenticated, setIsAttendanceAuthenticated] = useState(false);
 
-  const [executives, setExecutives] = useState<any[]>([]);
+  const [executives, setExecutives] = useState<ClubMember[]>([]);
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -234,19 +236,18 @@ export default function Home() {
     fetchPublicData();
   }, []);
 
-  useEffect(() => { if (isRankingModalOpen) fetchRanking(); }, [isRankingModalOpen, rankingMonth, rankingYear]);
-
   const fetchPublicData = async () => {
     try {
-      const data = await publicRequest<{ events: any[]; polls: any[]; executives: any[]; serverTime: string }>("/api/public/bootstrap");
-      setEvents(data.events.map(ev => ({
+      const data = await publicRequest<{ events: ClubEvent[]; polls: ClubPoll[]; executives: ClubMember[]; serverTime: string }>("/api/public/bootstrap");
+      const calendarEvents: CalendarEvent[] = data.events.map(ev => ({
         id: ev.id, 
         title: ev.title, 
         start: ev.start_at, 
-        end: ev.end_at,
+        end: ev.end_at ?? undefined,
         color: ev.type === 'normal' ? '#3b82f6' : ev.type === 'lesson' ? '#8b5cf6' : '#ec4899',
         extendedProps: { ...ev } 
-      })));
+      }));
+      setEvents(calendarEvents);
       setPolls(data.polls);
       setExecutives(data.executives);
       setTimeOffset(new Date(data.serverTime).getTime() - Date.now());
@@ -257,7 +258,7 @@ export default function Home() {
 
   const fetchApplicants = async (eventId: string) => {
     try {
-      const { data } = await publicRequest<{ data: any[] }>(`/api/public/applications/${encodeURIComponent(eventId)}`);
+      const { data } = await publicRequest<{ data: ClubApplication[] }>(`/api/public/applications/${encodeURIComponent(eventId)}`);
       setApplicants(data);
     } catch (error) {
       console.error("신청 명단 조회 실패:", error);
@@ -265,9 +266,9 @@ export default function Home() {
     }
   };
 
-  const fetchRanking = async () => {
+  const fetchRanking = useCallback(async () => {
     try {
-      const { members, events: eventsList, applications: apps } = await publicRequest<{ members: any[]; events: any[]; applications: any[] }>(`/api/public/attendance?year=${rankingYear}&month=${rankingMonth}`);
+      const { members, events: eventsList, applications: apps } = await publicRequest<{ members: ClubMember[]; events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/public/attendance?year=${rankingYear}&month=${rankingMonth}`);
       setMonthEventsList(eventsList);
       const ranking = members.map(m => {
         const memberApps = apps.filter(a => a.user_name === m.name) || [];
@@ -287,7 +288,11 @@ export default function Home() {
       setMonthlyRanking([]);
       setMonthEventsList([]);
     }
-  };
+  }, [rankingMonth, rankingYear]);
+
+  useEffect(() => {
+    if (isRankingModalOpen) void fetchRanking();
+  }, [isRankingModalOpen, fetchRanking]);
 
   // 🔥 [핵심 보완] 마감/오픈 철통 검증
   const getButtonStatus = () => {
@@ -428,12 +433,16 @@ export default function Home() {
 
   const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
   
-  const unifiedList = [
-    ...specialEvents.map(ev => ({ type: 'event', data: ev, id: `event-${ev.id}` })),
-    ...polls.map(poll => ({ type: 'poll', data: poll, id: `poll-${poll.id}` }))
+  type UnifiedListItem =
+    | { type: "event"; data: CalendarEvent; id: string }
+    | { type: "poll"; data: ClubPoll; id: string };
+
+  const unifiedList: UnifiedListItem[] = [
+    ...specialEvents.map((event): UnifiedListItem => ({ type: "event", data: event, id: `event-${event.id}` })),
+    ...polls.map((poll): UnifiedListItem => ({ type: "poll", data: poll, id: `poll-${poll.id}` }))
   ].sort((a, b) => {
     // 캘린더 라이브러리 누락 방지용 3중 체크
-    const getEventEnd = (ev: any) => {
+    const getEventEnd = (ev: CalendarEvent) => {
       if (ev.end) return new Date(ev.end).getTime();
       if (ev.extendedProps?.end_at) return new Date(ev.extendedProps.end_at).getTime();
       return new Date(ev.start).getTime() + (3 * 60 * 60 * 1000);
@@ -473,7 +482,7 @@ export default function Home() {
       </div>
 
       <div className="flex items-center justify-center gap-3 my-8">
-        <img src="/logo.png" alt="Snuminton Logo" className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" />
+        <Image src="/logo.png" alt="Snuminton Logo" width={80} height={80} className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" priority />
         <h1 className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}>SNUMINTON</h1>
       </div>
 
@@ -490,12 +499,12 @@ export default function Home() {
             const ev = info.event; 
             // 🔥 start, end 누락 방지용 로직
             setSelectedEvent({ 
+              ...ev.extendedProps,
               id: ev.id, 
               title: ev.title, 
-              start: ev.extendedProps?.start_at || ev.start, 
-              end: ev.extendedProps?.end_at || ev.end, 
-              ...ev.extendedProps 
-            }); 
+              start: ev.extendedProps?.start_at || ev.start,
+              end: ev.extendedProps?.end_at || ev.end || null
+            } as SelectedClubEvent);
             fetchApplicants(ev.id); 
             setActiveTab("info"); 
             setUserType("member"); 
@@ -526,7 +535,7 @@ export default function Home() {
                       </p>
                     </div>
                     <button 
-                      onClick={() => { setSelectedEvent({ id: ev.id, title: ev.title, start: ev.extendedProps?.start_at || ev.start, end: ev.extendedProps?.end_at || ev.end, ...ev.extendedProps }); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }} 
+                      onClick={() => { setSelectedEvent({ ...ev.extendedProps, id: ev.id, title: ev.title, start: ev.extendedProps.start_at || ev.start, end: ev.extendedProps.end_at || ev.end || null } as SelectedClubEvent); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }}
                       className={`w-full md:w-auto px-6 py-2.5 font-bold text-sm rounded-xl transition-colors mt-2 md:mt-0 ${isClosed ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
                     >
                       {isClosed ? t.closed : t.applyView}
@@ -637,7 +646,7 @@ export default function Home() {
                   </div>
                   <h2 className="text-3xl font-black text-slate-900 leading-tight mb-4">{selectedEvent?.title}</h2>
                   <div className="grid grid-cols-1 gap-3 text-slate-600">
-                    <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{new Date(selectedEvent?.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}</div>
+                    <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📅</span>{selectedEvent && new Date(selectedEvent.start).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}</div>
                     <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">📍</span>{selectedEvent?.location || t.unspecified}</div>
                     {selectedEvent?.allow_registration !== false && (
                       <div className="flex items-center gap-3 text-sm font-medium"><span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-lg">👥</span>{t.capacity} {selectedEvent?.max_capacity}{t.persons}</div>
@@ -686,7 +695,7 @@ export default function Home() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="col-span-2">
                           <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">{t.memberType}</label>
-                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value)}>
+                          <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 font-semibold appearance-none" value={userType} onChange={(e) => setUserType(e.target.value as "member" | "ob" | "guest")}>
                             <option value="member">{t.member}</option>
                             {selectedEvent?.type !== 'special' && <option value="ob">{t.ob}</option>}
                             {selectedEvent?.type !== 'special' && selectedEvent?.allow_guests !== false && <option value="guest">{t.guest}</option>}
@@ -795,8 +804,9 @@ export default function Home() {
                             waitlistNumber: 0 
                           })),
                           ...regApps.map((app, i) => {
-                            const isWaitlisted = selectedEvent?.max_capacity && i >= selectedEvent.max_capacity;
-                            const waitlistNumber = isWaitlisted ? i - selectedEvent.max_capacity + 1 : 0;
+                            const capacity = selectedEvent?.max_capacity ?? 0;
+                            const isWaitlisted = i >= capacity;
+                            const waitlistNumber = isWaitlisted ? i - capacity + 1 : 0;
                             return { 
                               ...app, 
                               displayIndex: String(i + 1).padStart(2, '0'), 
@@ -840,10 +850,12 @@ export default function Home() {
                                     {app.participation_type === 'partial_7_9' ? '19-21' : '20-22'}
                                   </span>
                                 )}
-                                <div className="flex items-baseline gap-1 tabular-nums">
-                                  <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
-                                  <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-                                </div>
+                                {app.applied_at && (
+                                  <div className="flex items-baseline gap-1 tabular-nums">
+                                    <span className="text-[9px] font-medium text-slate-400">{new Date(app.applied_at).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: '2-digit', day: '2-digit' }).replace('.', '/').replace('.', '')}</span>
+                                    <span className="text-[10px] font-bold text-slate-500">{new Date(app.applied_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
