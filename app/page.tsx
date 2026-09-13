@@ -50,11 +50,11 @@ const dict = {
     name: "이름",
     total: "총 횟수",
     regular: "정규",
-    customPeriod: "기간 설정",
+    customPeriod: "기간별 조회",
     startDate: "시작일",
     endDate: "종료일",
     viewPeriod: "기간 조회",
-    monthView: "월별 보기",
+    monthView: "월별 조회",
     adminLogin: "👑 임원진 로그인",
     adminDesc: "임원진 전용 페이지입니다. 비밀번호를 입력해주세요.",
     pwPlaceholder: "",
@@ -127,7 +127,7 @@ const dict = {
     name: "Name",
     total: "Total",
     regular: "Regular",
-    customPeriod: "Custom period",
+    customPeriod: "Period view",
     startDate: "Start date",
     endDate: "End date",
     viewPeriod: "View period",
@@ -210,6 +210,7 @@ export default function Home() {
   const [rankingYear, setRankingYear] = useState(new Date().getFullYear());
   const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
+  const [attendanceViewMode, setAttendanceViewMode] = useState<"month" | "range">("month");
   const [attendanceDateRange, setAttendanceDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
   const [attendanceStartDate, setAttendanceStartDate] = useState(firstDayOfCurrentKoreaMonth);
   const [attendanceEndDate, setAttendanceEndDate] = useState(koreaDateInputValue);
@@ -299,7 +300,7 @@ export default function Home() {
 
   const fetchRanking = useCallback(async () => {
     try {
-      const query = attendanceDateRange
+      const query = attendanceViewMode === "range" && attendanceDateRange
         ? new URLSearchParams({ start_date: attendanceDateRange.startDate, end_date: attendanceDateRange.endDate })
         : new URLSearchParams({ year: String(rankingYear), month: String(rankingMonth) });
       const { members, events: eventsList, applications: apps } = await publicRequest<{ members: ClubMember[]; events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/public/attendance?${query}`);
@@ -322,9 +323,10 @@ export default function Home() {
       setMonthlyRanking([]);
       setMonthEventsList([]);
     }
-  }, [attendanceDateRange, rankingMonth, rankingYear]);
+  }, [attendanceDateRange, attendanceViewMode, rankingMonth, rankingYear]);
 
   const moveRankingMonth = (direction: -1 | 1) => {
+    setAttendanceViewMode("month");
     setAttendanceDateRange(null);
     const nextDate = new Date(rankingYear, rankingMonth - 1 + direction, 1);
     setRankingYear(nextDate.getFullYear());
@@ -334,6 +336,16 @@ export default function Home() {
   const applyCustomAttendanceRange = () => {
     if (!attendanceStartDate || !attendanceEndDate || attendanceStartDate > attendanceEndDate) {
       showToast("조회 시작일과 종료일을 확인해주세요.", "error");
+      return;
+    }
+    setAttendanceViewMode("range");
+    setAttendanceDateRange({ startDate: attendanceStartDate, endDate: attendanceEndDate });
+  };
+
+  const selectAttendanceViewMode = (mode: "month" | "range") => {
+    setAttendanceViewMode(mode);
+    if (mode === "month") {
+      setAttendanceDateRange(null);
       return;
     }
     setAttendanceDateRange({ startDate: attendanceStartDate, endDate: attendanceEndDate });
@@ -634,21 +646,28 @@ export default function Home() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 md:p-6 transition-all" onClick={() => setIsRankingModalOpen(false)}>
           <div className="bg-white w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="bg-slate-900 text-white p-5 md:p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-4 w-full justify-between">
-                <button onClick={() => moveRankingMonth(-1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold" title="이전 달 보기">◀</button>
-                <h2 className="text-lg md:text-xl font-black tracking-tight text-center">{attendanceDateRange ? `${attendanceDateRange.startDate} ~ ${attendanceDateRange.endDate} ${t.attendanceTitle}` : `${rankingYear}. ${String(rankingMonth).padStart(2, '0')} ${t.attendanceTitle}`}</h2>
-                <button onClick={() => moveRankingMonth(1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold" title="다음 달 보기">▶</button>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-800 rounded-xl max-w-sm mx-auto w-full" role="tablist" aria-label="출석 조회 방식">
+                <button type="button" role="tab" aria-selected={attendanceViewMode === "month"} onClick={() => selectAttendanceViewMode("month")} className={`py-2.5 rounded-lg text-sm font-black transition-colors ${attendanceViewMode === "month" ? "bg-white text-blue-600 shadow-sm" : "text-slate-300 hover:text-white"}`}>{t.monthView}</button>
+                <button type="button" role="tab" aria-selected={attendanceViewMode === "range"} onClick={() => selectAttendanceViewMode("range")} className={`py-2.5 rounded-lg text-sm font-black transition-colors ${attendanceViewMode === "range" ? "bg-white text-blue-600 shadow-sm" : "text-slate-300 hover:text-white"}`}>{t.customPeriod}</button>
               </div>
-              <div className="flex flex-col md:flex-row gap-2 md:items-end md:justify-center border-t border-slate-700 pt-4">
-                <div className="flex flex-wrap items-end gap-2">
-                  <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-300">{t.startDate}<input type="date" value={attendanceStartDate} onChange={(e) => setAttendanceStartDate(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white" /></label>
-                  <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-300">{t.endDate}<input type="date" value={attendanceEndDate} onChange={(e) => setAttendanceEndDate(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white" /></label>
+              {attendanceViewMode === "month" ? (
+                <div className="flex items-center gap-4 w-full justify-between">
+                  <button onClick={() => moveRankingMonth(-1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold" title="이전 달 보기">◀</button>
+                  <h2 className="text-lg md:text-xl font-black tracking-tight text-center">{rankingYear}. {String(rankingMonth).padStart(2, '0')} {t.attendanceTitle}</h2>
+                  <button onClick={() => moveRankingMonth(1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold" title="다음 달 보기">▶</button>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={applyCustomAttendanceRange} className="px-4 py-2 bg-blue-500 hover:bg-blue-400 rounded-lg text-sm font-bold">{t.viewPeriod}</button>
-                  <button onClick={() => setAttendanceDateRange(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold">{t.monthView}</button>
+              ) : (
+                <div className="flex flex-col gap-3 border-t border-slate-700 pt-4">
+                  <h2 className="text-lg md:text-xl font-black tracking-tight text-center">{attendanceDateRange ? `${attendanceDateRange.startDate} ~ ${attendanceDateRange.endDate} ${t.attendanceTitle}` : t.attendanceTitle}</h2>
+                  <div className="flex flex-col md:flex-row gap-2 md:items-end md:justify-center">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-300">{t.startDate}<input type="date" value={attendanceStartDate} onChange={(e) => setAttendanceStartDate(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white" /></label>
+                      <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-300">{t.endDate}<input type="date" value={attendanceEndDate} onChange={(e) => setAttendanceEndDate(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white" /></label>
+                    </div>
+                    <button onClick={applyCustomAttendanceRange} className="px-4 py-2 bg-blue-500 hover:bg-blue-400 rounded-lg text-sm font-bold">{t.viewPeriod}</button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-auto bg-slate-50 p-0 custom-scrollbar">
               <table className="w-full text-xs md:text-sm text-center min-w-max border-collapse">

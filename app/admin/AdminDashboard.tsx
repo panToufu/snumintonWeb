@@ -26,7 +26,36 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
 const eventColor = (type: EventType) => type === "normal" ? "#3b82f6" : type === "lesson" ? "#8b5cf6" : type === "lightning" ? "#f59e0b" : "#ec4899";
 const isAttendanceManagedEvent = (event: Pick<ClubEvent, "type">) => event.type !== "special" && event.type !== "lightning";
 const firstDayOfCurrentKoreaMonth = () => `${koreaDateInputValue().slice(0, 7)}-01`;
-const isThirtyMinuteTime = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:(00|30)(?::00)?$/.test(value);
+const hourOptions = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
+const toDateTimeValue = (date: string, hour: string, minute: string) => `${date}T${hour}:${minute}:00`;
+
+type HalfHourDateTimePickerProps = {
+  label: string;
+  date: string;
+  hour: string;
+  minute: string;
+  onDateChange: (value: string) => void;
+  onHourChange: (value: string) => void;
+  onMinuteChange: (value: string) => void;
+};
+
+function HalfHourDateTimePicker({ label, date, hour, minute, onDateChange, onHourChange, onMinuteChange }: HalfHourDateTimePickerProps) {
+  return (
+    <div>
+      <label className="block text-xs font-bold text-slate-500 mb-2">{label}</label>
+      <div className="grid grid-cols-1 sm:grid-cols-[1.5fr_1fr_1fr] gap-2">
+        <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" aria-label={`${label} 날짜`} />
+        <select value={hour} onChange={(event) => onHourChange(event.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" aria-label={`${label} 시`}>
+          {hourOptions.map((option) => <option key={option} value={option}>{option}시</option>)}
+        </select>
+        <select value={minute} onChange={(event) => onMinuteChange(event.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" aria-label={`${label} 분`}>
+          <option value="00">00분</option>
+          <option value="30">30분</option>
+        </select>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -54,6 +83,7 @@ export default function AdminDashboard() {
   
   const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
+  const [attendanceViewMode, setAttendanceViewMode] = useState<"month" | "range">("month");
   const [attendanceDateRange, setAttendanceDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
   const [attendanceStartDate, setAttendanceStartDate] = useState(firstDayOfCurrentKoreaMonth);
   const [attendanceEndDate, setAttendanceEndDate] = useState(koreaDateInputValue);
@@ -80,13 +110,19 @@ export default function AdminDashboard() {
 
   const [spEventTitle, setSpEventTitle] = useState("");
   const [spEventType, setSpEventType] = useState<"special" | "lightning">("special");
-  const [spEventStartDate, setSpEventStartDate] = useState(""); 
-  const [spEventEndDate, setSpEventEndDate] = useState("");      
+  const [spEventStartDay, setSpEventStartDay] = useState("");
+  const [spEventStartHour, setSpEventStartHour] = useState("19");
+  const [spEventStartMinute, setSpEventStartMinute] = useState("00");
+  const [spEventEndDay, setSpEventEndDay] = useState("");
+  const [spEventEndHour, setSpEventEndHour] = useState("22");
+  const [spEventEndMinute, setSpEventEndMinute] = useState("00");
   const [spEventLocation, setSpEventLocation] = useState("");
   const [spEventCapacity, setSpEventCapacity] = useState(50);
   const [spEventAfterparty, setSpEventAfterparty] = useState(false);
   const [spEventAllowRegistration, setSpEventAllowRegistration] = useState(true);
-  const [spEventRegistrationStart, setSpEventRegistrationStart] = useState(""); 
+  const [spEventRegistrationStartDay, setSpEventRegistrationStartDay] = useState("");
+  const [spEventRegistrationStartHour, setSpEventRegistrationStartHour] = useState("19");
+  const [spEventRegistrationStartMinute, setSpEventRegistrationStartMinute] = useState("00");
 
   const executives = members
     .filter(m => ['회장', '부회장', '임원진'].includes(m.user_type))
@@ -268,7 +304,7 @@ export default function AdminDashboard() {
     
     const activeMembers = members.filter(m => m.user_type !== 'ob');
 
-    const query = attendanceDateRange
+    const query = attendanceViewMode === "range" && attendanceDateRange
       ? new URLSearchParams({ start_date: attendanceDateRange.startDate, end_date: attendanceDateRange.endDate })
       : new URLSearchParams({ year: String(currentYear), month: String(currentMonth) });
     const { events: eventsList, applications: apps } = await adminRequest<{ events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/admin/attendance-report?${query}`);
@@ -290,9 +326,10 @@ export default function AdminDashboard() {
     });
     ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     setMonthlyRanking(ranking);
-  }, [attendanceDateRange, currentMonth, currentYear, members]);
+  }, [attendanceDateRange, attendanceViewMode, currentMonth, currentYear, members]);
 
   const moveCurrentMonth = (direction: -1 | 1) => {
+    setAttendanceViewMode("month");
     setAttendanceDateRange(null);
     const nextDate = new Date(currentYear, currentMonth - 1 + direction, 1);
     setCurrentYear(nextDate.getFullYear());
@@ -302,6 +339,16 @@ export default function AdminDashboard() {
   const applyCustomAttendanceRange = () => {
     if (!attendanceStartDate || !attendanceEndDate || attendanceStartDate > attendanceEndDate) {
       showToast("조회 시작일과 종료일을 확인해주세요.", "error");
+      return;
+    }
+    setAttendanceViewMode("range");
+    setAttendanceDateRange({ startDate: attendanceStartDate, endDate: attendanceEndDate });
+  };
+
+  const selectAttendanceViewMode = (mode: "month" | "range") => {
+    setAttendanceViewMode(mode);
+    if (mode === "month") {
+      setAttendanceDateRange(null);
       return;
     }
     setAttendanceDateRange({ startDate: attendanceStartDate, endDate: attendanceEndDate });
@@ -335,16 +382,19 @@ export default function AdminDashboard() {
   const handleRegisterSpecialEvent = async () => {
     const isLightning = spEventType === "lightning";
     const eventLabel = isLightning ? "번개운동" : "행사";
+    const startDateTime = toDateTimeValue(spEventStartDay, spEventStartHour, spEventStartMinute);
+    const endDateTime = toDateTimeValue(spEventEndDay, spEventEndHour, spEventEndMinute);
+    const registrationStartDateTime = toDateTimeValue(spEventRegistrationStartDay, spEventRegistrationStartHour, spEventRegistrationStartMinute);
     if (!isLightning && !spEventTitle.trim()) return showToast("행사 제목을 입력해주세요.", "error");
-    if (!spEventStartDate || !spEventEndDate) return showToast(`${eventLabel}의 시작 시간과 종료 시간을 모두 설정해주세요.`, "error");
-    if (!isThirtyMinuteTime(spEventStartDate) || !isThirtyMinuteTime(spEventEndDate) || (spEventRegistrationStart && !isThirtyMinuteTime(spEventRegistrationStart))) return showToast("시간은 정각 또는 30분 단위로 설정해주세요.", "error");
-    if (!isLightning && spEventAllowRegistration && !spEventRegistrationStart) return showToast("참가 신청을 언제부터 받을지(신청 시작 시간) 설정해주세요.", "error");
+    if (!spEventStartDay || !spEventEndDay) return showToast(`${eventLabel}의 시작 날짜와 종료 날짜를 모두 설정해주세요.`, "error");
+    if (new Date(endDateTime).getTime() <= new Date(startDateTime).getTime()) return showToast("종료 시간은 시작 시간보다 늦어야 합니다.", "error");
+    if (!isLightning && spEventAllowRegistration && !spEventRegistrationStartDay) return showToast("참가 신청을 언제부터 받을지(신청 시작 시간) 설정해주세요.", "error");
 
     if (!await askForConfirmation(`'${isLightning ? "번개운동" : spEventTitle}' ${eventLabel}을 등록하시겠습니까?`, "등록")) return;
 
-    const startAt = new Date(spEventStartDate).toISOString();
-    const endAt = new Date(spEventEndDate).toISOString();
-    const regStartAt = (spEventAllowRegistration && spEventRegistrationStart) ? new Date(spEventRegistrationStart).toISOString() : null;
+    const startAt = new Date(startDateTime).toISOString();
+    const endAt = new Date(endDateTime).toISOString();
+    const regStartAt = (!isLightning && spEventAllowRegistration && spEventRegistrationStartDay) ? new Date(registrationStartDateTime).toISOString() : null;
     
     const payload = { 
       title: isLightning ? "번개운동" : spEventTitle,
@@ -367,9 +417,15 @@ export default function AdminDashboard() {
       showToast(`${eventLabel} 등록 완료! 🎉`, "success");
       setSpEventTitle("");
       setSpEventType("special");
-      setSpEventStartDate("");
-      setSpEventEndDate("");
-      setSpEventRegistrationStart("");
+      setSpEventStartDay("");
+      setSpEventStartHour("19");
+      setSpEventStartMinute("00");
+      setSpEventEndDay("");
+      setSpEventEndHour("22");
+      setSpEventEndMinute("00");
+      setSpEventRegistrationStartDay("");
+      setSpEventRegistrationStartHour("19");
+      setSpEventRegistrationStartMinute("00");
       setSpEventLocation("");
       setSpEventCapacity(50);
       setSpEventAfterparty(false);
@@ -406,6 +462,7 @@ export default function AdminDashboard() {
   const currentSelectedEventObj = events.find(e => e.id === selectedEventId);
   const attendanceEvents = events.filter(isAttendanceManagedEvent);
   const selectedAttendanceEvent = currentSelectedEventObj && isAttendanceManagedEvent(currentSelectedEventObj) ? currentSelectedEventObj : null;
+  const selectedAttendanceDateKey = selectedAttendanceEvent && selectedEventDate ? koreaDateInputValue(selectedEventDate) : null;
   const selectEventForAttendance = (info: EventClickArg) => {
     setSelectedEventId(info.event.id);
     setSelectedEventTitle(info.event.title);
@@ -427,6 +484,8 @@ export default function AdminDashboard() {
       <style dangerouslySetInnerHTML={{__html: `
         .fc .fc-toolbar-title { font-size: 1.1rem !important; font-weight: 900; }
         .fc .fc-button { padding: 0.3em 0.6em; font-size: 0.8rem; }
+        .fc .attendance-selected-day { background: #eff6ff !important; box-shadow: inset 0 0 0 2px #60a5fa; }
+        .fc .attendance-selected-event { box-shadow: 0 0 0 3px #1d4ed8, 0 4px 10px rgba(29, 78, 216, 0.3) !important; font-weight: 900 !important; position: relative; z-index: 3; }
         @media (max-width: 768px) {
           .fc .fc-event { padding: 1px; margin-bottom: 1px !important; }
           .fc .fc-event-title { font-size: 0.6rem !important; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -468,7 +527,7 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">출석 체크용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={selectEventForAttendance} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClassNames={(arg) => arg.event.id === selectedEventId ? ["attendance-selected-event"] : []} dayCellClassNames={(arg) => selectedAttendanceDateKey === koreaDateInputValue(arg.date) ? ["attendance-selected-day"] : []} eventClick={selectEventForAttendance} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedAttendanceEvent ? (
@@ -581,7 +640,7 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">제출 확인용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={selectEventForAttendance} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClassNames={(arg) => arg.event.id === selectedEventId ? ["attendance-selected-event"] : []} dayCellClassNames={(arg) => selectedAttendanceDateKey === koreaDateInputValue(arg.date) ? ["attendance-selected-day"] : []} eventClick={selectEventForAttendance} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedAttendanceEvent ? (
@@ -694,23 +753,26 @@ export default function AdminDashboard() {
             <div className="w-full p-3 md:p-8 overflow-y-auto bg-slate-50 custom-scrollbar">
               <div className="max-w-full mx-auto">
                 <div className="mb-4 md:mb-6 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <button onClick={() => moveCurrentMonth(-1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base" title="이전 달 보기">◀</button>
-                    <div className="text-center"><h2 className="text-lg md:text-2xl font-black text-slate-800">{attendanceDateRange ? `${attendanceDateRange.startDate} ~ ${attendanceDateRange.endDate} 상세 출석부` : `${currentYear}년 ${currentMonth}월 상세 출석부`}</h2></div>
-                    <button onClick={() => moveCurrentMonth(1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base" title="다음 달 보기">▶</button>
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl max-w-sm mx-auto" role="tablist" aria-label="출석 조회 방식">
+                    <button type="button" role="tab" aria-selected={attendanceViewMode === "month"} onClick={() => selectAttendanceViewMode("month")} className={`py-2.5 rounded-lg text-sm font-black transition-colors ${attendanceViewMode === "month" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>월별 조회</button>
+                    <button type="button" role="tab" aria-selected={attendanceViewMode === "range"} onClick={() => selectAttendanceViewMode("range")} className={`py-2.5 rounded-lg text-sm font-black transition-colors ${attendanceViewMode === "range" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>기간별 조회</button>
                   </div>
-                  <div className="flex flex-col lg:flex-row gap-2 lg:items-end lg:justify-center border-t border-slate-100 pt-4">
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs font-bold text-slate-500">기간</label>
-                      <input type="date" value={attendanceStartDate} onChange={(e) => setAttendanceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium" aria-label="출석 조회 시작일" />
-                      <span className="text-slate-400">~</span>
-                      <input type="date" value={attendanceEndDate} onChange={(e) => setAttendanceEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium" aria-label="출석 조회 종료일" />
+                  {attendanceViewMode === "month" ? (
+                    <div className="flex items-center justify-between">
+                      <button onClick={() => moveCurrentMonth(-1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base" title="이전 달 보기">◀</button>
+                      <div className="text-center"><h2 className="text-lg md:text-2xl font-black text-slate-800">{currentYear}년 {currentMonth}월 상세 출석부</h2></div>
+                      <button onClick={() => moveCurrentMonth(1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base" title="다음 달 보기">▶</button>
                     </div>
-                    <div className="flex gap-2">
+                  ) : (
+                    <div className="flex flex-col lg:flex-row gap-2 lg:items-end lg:justify-center border-t border-slate-100 pt-4">
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                        <label className="flex flex-col gap-1 text-xs font-bold text-slate-500">시작일<input type="date" value={attendanceStartDate} onChange={(e) => setAttendanceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium" aria-label="출석 조회 시작일" /></label>
+                        <label className="flex flex-col gap-1 text-xs font-bold text-slate-500">종료일<input type="date" value={attendanceEndDate} onChange={(e) => setAttendanceEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium" aria-label="출석 조회 종료일" /></label>
+                      </div>
                       <button onClick={applyCustomAttendanceRange} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">기간 조회</button>
-                      <button onClick={() => setAttendanceDateRange(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-200">월별 보기</button>
+                      {attendanceDateRange && <p className="text-xs text-slate-500 lg:self-center">현재: {attendanceDateRange.startDate} ~ {attendanceDateRange.endDate}</p>}
                     </div>
-                  </div>
+                  )}
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto custom-scrollbar">
                   <table className="w-full text-xs md:text-sm text-center min-w-max border-collapse">
@@ -884,16 +946,10 @@ export default function AdminDashboard() {
                   {spEventType === "lightning" && <p className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-800 font-medium">번개운동은 시간과 장소만 등록하며, 정원·참가 신청·출석 관리는 사용하지 않습니다.</p>}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 시작 날짜 및 시간</label>
-                      <input type="datetime-local" step="1800" value={spEventStartDate} onChange={(e) => setSpEventStartDate(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 종료 날짜 및 시간</label>
-                      <input type="datetime-local" step="1800" value={spEventEndDate} onChange={(e) => setSpEventEndDate(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
-                    </div>
+                    <HalfHourDateTimePicker label="⏰ 시작 날짜 및 시간" date={spEventStartDay} hour={spEventStartHour} minute={spEventStartMinute} onDateChange={setSpEventStartDay} onHourChange={setSpEventStartHour} onMinuteChange={setSpEventStartMinute} />
+                    <HalfHourDateTimePicker label="⏰ 종료 날짜 및 시간" date={spEventEndDay} hour={spEventEndHour} minute={spEventEndMinute} onDateChange={setSpEventEndDay} onHourChange={setSpEventEndHour} onMinuteChange={setSpEventEndMinute} />
                   </div>
-                  <p className="-mt-3 text-[11px] text-slate-400">시간은 30분 단위로 설정할 수 있습니다.</p>
+                  <p className="-mt-3 text-[11px] text-slate-400">분은 00분 또는 30분만 선택할 수 있습니다.</p>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2">📍 장소 (선택)</label>
@@ -913,8 +969,7 @@ export default function AdminDashboard() {
                   {spEventType === "special" && spEventAllowRegistration && (
                     <div className="space-y-6 pt-2">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 참가 신청 시작(오픈) 시간</label>
-                        <input type="datetime-local" step="1800" value={spEventRegistrationStart} onChange={(e) => setSpEventRegistrationStart(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
+                        <HalfHourDateTimePicker label="⏰ 참가 신청 시작(오픈) 시간" date={spEventRegistrationStartDay} hour={spEventRegistrationStartHour} minute={spEventRegistrationStartMinute} onDateChange={setSpEventRegistrationStartDay} onHourChange={setSpEventRegistrationStartHour} onMinuteChange={setSpEventRegistrationStartMinute} />
                         <p className="text-[10px] text-slate-400 mt-1">설정한 시간 전에는 부원들이 신청 버튼을 누르지 못합니다.</p>
                       </div>
 
