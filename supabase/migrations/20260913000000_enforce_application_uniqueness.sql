@@ -1,39 +1,38 @@
--- Enforce the same duplicate-application rules in PostgreSQL that the API uses.
--- This makes concurrent submissions safe. The migration intentionally refuses to
--- delete or change existing records when old duplicate applications are found.
+-- Preserve existing application history, including any legacy duplicates.
+-- Every application created after this migration is protected by the unique
+-- indexes below. The API also continues to reject applications that duplicate
+-- a legacy record.
 
 begin;
 
-do $$
-begin
-  if exists (
-    select 1
-    from public.applications
-    where user_type in ('member', 'ob', '회장', '부회장', '임원진')
-    group by event_id, lower(user_name)
-    having count(*) > 1
-  ) then
-    raise exception 'Member or OB duplicate applications exist. Resolve them before applying this migration.';
-  end if;
+alter table public.applications
+  add column if not exists enforce_application_uniqueness boolean;
 
-  if exists (
-    select 1
-    from public.applications
-    where user_type = 'guest' and phone_number is not null and regexp_replace(phone_number, '\D', '', 'g') <> ''
-    group by event_id, regexp_replace(phone_number, '\D', '', 'g')
-    having count(*) > 1
-  ) then
-    raise exception 'Guest duplicate applications exist. Resolve them before applying this migration.';
-  end if;
-end;
-$$;
+-- Rows that existed before the constraint are legacy records. Marking them
+-- separately keeps the migration non-destructive when historical duplicates
+-- are present, while new rows use the default value of true.
+update public.applications
+set enforce_application_uniqueness = false
+where enforce_application_uniqueness is null;
 
-create unique index if not exists applications_unique_non_guest_name
+alter table public.applications
+  alter column enforce_application_uniqueness set default true,
+  alter column enforce_application_uniqueness set not null;
+
+-- One non-guest application per name per event for newly created records.
+create unique index if not exists applications_unique_new_member_name_per_event
   on public.applications (event_id, lower(user_name))
-  where user_type in ('member', 'ob', '회장', '부회장', '임원진');
+  where enforce_application_uniqueness is true
+    and user_type in ('member', 'ob', '회장', '부회장', '임원진');
 
-create unique index if not exists applications_unique_guest_phone
-  on public.applications (event_id, regexp_replace(phone_number, '\D', '', 'g'))
-  where user_type = 'guest' and phone_number is not null and regexp_replace(phone_number, '\D', '', 'g') <> '';
+-- One guest application per normalized phone number per event for newly
+-- created records. The expression treats 010-1234-5678 and 01012345678 as
+-- the same phone number.
+create unique index if not exists applications_unique_new_guest_phone_per_event
+  on public.applications (event_id, regexp_replace(phone_number, '[^0-9]', '', 'g'))
+  where enforce_application_uniqueness is true
+    and user_type = 'guest'
+    and phone_number is not null
+    and regexp_replace(phone_number, '[^0-9]', '', 'g') <> '';
 
 commit;
