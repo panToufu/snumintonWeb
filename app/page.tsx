@@ -503,6 +503,7 @@ export default function Home() {
           height="auto" 
           locale={lang === "ko" ? "ko" : "en"} 
           displayEventTime={true} 
+          displayEventEnd={false}
           eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: false, hour12: false }}
           eventClick={(info) => { 
             const ev = info.event; 
