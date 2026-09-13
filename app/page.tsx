@@ -594,7 +594,7 @@ export default function Home() {
         <div className="flex flex-col gap-8 min-h-[250px]">
           <>
               <section className="space-y-3">
-                <div className="flex items-center gap-2 px-1"><h3 className="font-black text-blue-700">✨ {t.openRegistration}</h3>{openRegistrationEvents.length > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">{openRegistrationEvents.length}</span>}</div>
+                <div className="flex items-center gap-2 border-l-2 border-blue-500 pl-3"><h3 className="font-black text-blue-700">{t.openRegistration}</h3>{openRegistrationEvents.length > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">{openRegistrationEvents.length}</span>}</div>
                 {openRegistrationEvents.length > 0 ? (
                   <div className="flex flex-col gap-3">{openRegistrationEvents.map((event) => renderEventCard(event, false, true))}</div>
                 ) : (
@@ -604,14 +604,14 @@ export default function Home() {
 
               {upcomingEvents.length > 0 && (
                 <section className="space-y-3">
-                  <h3 className="font-black text-slate-700 px-1">📅 {t.upcomingEvents}</h3>
+                  <h3 className="border-l-2 border-slate-400 pl-3 font-black text-slate-700">{t.upcomingEvents}</h3>
                   <div className="flex flex-col gap-3">{upcomingEvents.map((event) => renderEventCard(event))}</div>
                 </section>
               )}
 
               {activePolls.length > 0 && (
                 <section className="space-y-3">
-                  <h3 className="font-black text-slate-700 px-1">🗳️ {t.activePolls}</h3>
+                  <h3 className="border-l-2 border-purple-400 pl-3 font-black text-slate-700">{t.activePolls}</h3>
                   <div className="flex flex-col gap-3">
                     {activePolls.map((poll) => (
                       <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-all">
@@ -636,7 +636,7 @@ export default function Home() {
               {pastEvents.length > 0 && (
                 <section className="border-t border-slate-200 pt-5">
                   <button type="button" onClick={() => setIsPastEventsOpen((open) => !open)} className="w-full flex items-center justify-between px-1 text-left text-slate-500 hover:text-slate-800 transition-colors">
-                    <span className="font-bold">🗂️ {isPastEventsOpen ? t.hidePastEvents : t.showPastEvents} <span className="ml-1 text-xs text-slate-400">({pastEvents.length})</span></span>
+                    <span className="border-l-2 border-slate-300 pl-3 font-bold">{isPastEventsOpen ? t.hidePastEvents : t.showPastEvents} <span className="ml-1 text-xs text-slate-400">({pastEvents.length})</span></span>
                     <span className="text-sm">{isPastEventsOpen ? "▲" : "▼"}</span>
                   </button>
                   {isPastEventsOpen && <div className="mt-3 flex flex-col gap-3">{pastEvents.map((event) => renderEventCard(event, true))}</div>}
