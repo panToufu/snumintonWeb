@@ -5,6 +5,7 @@ import Image from "next/image";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import luxon3Plugin from "@fullcalendar/luxon3";
 import { useAppFeedback } from "@/components/AppFeedback";
 import type { AttendanceEvent, AttendanceRanking, CalendarEvent, ClubApplication, ClubEvent, ClubMember, ClubPoll, SelectedClubEvent } from "@/lib/club-types";
 import { getRegistrationStart } from "@/lib/registration-time";
@@ -496,7 +497,7 @@ export default function Home() {
 
       <div className="bg-white p-4 md:p-6 rounded-3xl shadow-lg border border-gray-100">
         <FullCalendar 
-          plugins={[dayGridPlugin, interactionPlugin]} 
+          plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]}
           initialView="dayGridMonth" 
           events={events} 
           timeZone="Asia/Seoul"

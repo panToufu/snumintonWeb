@@ -6,6 +6,7 @@ import FullCalendar from "@fullcalendar/react";
 import type { EventClickArg } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import luxon3Plugin from "@fullcalendar/luxon3";
 import { useAppFeedback } from "@/components/AppFeedback";
 import type { AdminCalendarEvent, AttendanceEvent, AttendanceRanking, ClubApplication, ClubEvent, ClubMember } from "@/lib/club-types";
 
@@ -421,7 +422,7 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">출석 체크용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedEventId ? (
@@ -534,7 +535,7 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">제출 확인용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedEventId ? (
@@ -638,7 +639,7 @@ export default function AdminDashboard() {
                     <p className="text-xs md:text-sm text-slate-500 mt-1">달력에서 일정을 클릭하여 수정/삭제하세요.</p>
                   </div>
                 </div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={handleEventClickForEdit} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={handleEventClickForEdit} />
               </div>
             </div>
           )}
