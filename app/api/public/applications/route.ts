@@ -52,6 +52,10 @@ function requestError(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
 
+function phoneIdentity(phone: string) {
+  return phone.replace(/\D/g, "");
+}
+
 function registrationStart(event: EventRow, userType: string) {
   if (event.registration_start_at) return new Date(event.registration_start_at);
 
@@ -135,7 +139,7 @@ export async function POST(request: Request) {
         .eq("event_id", eventId)
         .eq("user_name", finalName);
       if (duplicateError) throw duplicateError;
-      if ((existingApplications ?? []).some((application) => application.user_type !== "guest" && application.user_type !== "ob")) {
+      if ((existingApplications ?? []).some((application) => application.user_type !== "guest")) {
         return requestError(`이미 신청된 이름(${finalName})입니다. 명단을 다시 확인해주세요.`);
       }
     }
@@ -147,14 +151,27 @@ export async function POST(request: Request) {
       const guestPassword = typeof body.guest_password === "string" ? body.guest_password : "";
       const guestPasswordHash = process.env.GUEST_PASSWORD_HASH;
       if (!isScryptHash(guestPasswordHash)) return requestError("게스트 신청 설정을 확인해주세요.", 503);
-      if (!(await verifyScryptHash(guestPassword, guestPasswordHash))) {
+      if (!guestPassword || guestPassword.length > 200 || !(await verifyScryptHash(guestPassword, guestPasswordHash))) {
         recordFailedAttempt(key);
         return requestError("게스트 공통 비밀번호가 일치하지 않습니다. 임원진에게 문의해주세요.");
       }
 
       const rawPhone = typeof body.phone_number === "string" ? body.phone_number.trim() : "";
-      if (!rawPhone || rawPhone.length > 30) return requestError("게스트는 연락처를 필수로 입력해야 합니다.");
+      const normalizedPhone = phoneIdentity(rawPhone);
+      if (!rawPhone || rawPhone.length > 30 || normalizedPhone.length < 9 || normalizedPhone.length > 15) {
+        return requestError("게스트 연락처를 정확히 입력해주세요.");
+      }
       phoneNumber = rawPhone;
+
+      const { data: guestApplications, error: guestDuplicateError } = await supabase
+        .from("applications")
+        .select("phone_number")
+        .eq("event_id", eventId)
+        .eq("user_type", "guest");
+      if (guestDuplicateError) throw guestDuplicateError;
+      if ((guestApplications ?? []).some((application) => typeof application.phone_number === "string" && phoneIdentity(application.phone_number) === normalizedPhone)) {
+        return requestError("이미 이 연락처로 신청한 일정입니다. 명단을 다시 확인해주세요.");
+      }
 
       guestSource = typeof body.guest_source === "string" && guestSources.includes(body.guest_source) ? body.guest_source : "인스타";
       if (guestSource === "부원 소개") {
