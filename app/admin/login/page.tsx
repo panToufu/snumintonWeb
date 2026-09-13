@@ -39,8 +39,8 @@ export default function AdminLoginPage() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-7 shadow-xl">
         <p className="mb-2 text-sm font-bold text-blue-600">SNUMINTON</p>
-        <h1 className="text-2xl font-black text-slate-900">운영진 페이지</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-500">운영진 공용 비밀번호를 입력해주세요.</p>
+        <h1 className="text-2xl font-black text-slate-900">임원진 페이지</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-500">임원진 공용 비밀번호를 입력해주세요.</p>
         <label className="mt-6 block text-sm font-bold text-slate-700" htmlFor="admin-password">비밀번호</label>
         <input
           id="admin-password"
@@ -54,7 +54,7 @@ export default function AdminLoginPage() {
         />
         {error && <p className="mt-3 text-sm font-medium text-rose-600" role="alert">{error}</p>}
         <button disabled={isSubmitting} className="mt-6 w-full rounded-xl bg-slate-900 py-3.5 text-sm font-black text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60">
-          {isSubmitting ? "확인 중..." : "운영진 페이지로 이동"}
+          {isSubmitting ? "확인 중..." : "임원진 페이지로 이동"}
         </button>
       </form>
     </main>

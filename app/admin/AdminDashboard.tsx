@@ -36,7 +36,6 @@ export default function AdminDashboard() {
   
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [bulkMemberNames, setBulkMemberNames] = useState("");
-  const [newMemberType, setNewMemberType] = useState("member");
 
   const [newExecName, setNewExecName] = useState(""); 
   const [newExecRole, setNewExecRole] = useState("임원진");
@@ -81,6 +80,8 @@ export default function AdminDashboard() {
       const roleOrder: Record<string, number> = { '회장': 1, '부회장': 2, '임원진': 3 };
       return (roleOrder[a.user_type] || 4) - (roleOrder[b.user_type] || 4);
     });
+
+  const clubMembers = members.filter(m => m.user_type !== 'ob');
 
   useEffect(() => {
     fetchEvents();
@@ -177,7 +178,7 @@ export default function AdminDashboard() {
     if (!bulkMemberNames.trim()) return showToast("이름을 입력해주세요.", "error");
     const namesArray = bulkMemberNames.split("\n").map(name => name.trim()).filter(name => name !== "");
     if (namesArray.length === 0) return showToast("유효한 이름이 없습니다.", "error");
-    const payload = namesArray.map(name => ({ name: name, user_type: newMemberType }));
+    const payload = namesArray.map(name => ({ name: name, user_type: "member" }));
     try {
       await adminRequest("/api/admin/members", { method: "POST", body: JSON.stringify({ members: payload }) });
       setBulkMemberNames(""); fetchMembers(); showToast(`${namesArray.length}명 추가 완료!`, "success");
@@ -193,8 +194,8 @@ export default function AdminDashboard() {
   const handleAddExecutive = async () => {
     if (!newExecName.trim()) return showToast("임명할 부원의 이름을 입력해주세요.", "error");
     const searchName = newExecName.replace(/\s/g, '').toLowerCase();
-    const matchedMember = members.find(m => m.name.replace(/\s/g, '').toLowerCase() === searchName);
-    if (!matchedMember) return showToast("입력하신 이름이 전체 명단에 없습니다.", "error");
+    const matchedMember = clubMembers.find(m => m.name.replace(/\s/g, '').toLowerCase() === searchName);
+    if (!matchedMember) return showToast("입력하신 이름이 부원 명단에 없습니다.", "error");
     if (['회장', '부회장', '임원진'].includes(matchedMember.user_type)) return showToast(`이미 [${matchedMember.user_type}] 직책을 가지고 있는 부원입니다!`, "info");
 
     try {
@@ -387,7 +388,7 @@ export default function AdminDashboard() {
         <div className="bg-slate-900 text-white">
           <div className="p-4 md:p-6 pb-4 flex justify-between items-center">
             <div>
-              <h1 className="text-xl md:text-2xl font-black tracking-tight">👑 스누민턴 운영진</h1>
+              <h1 className="text-xl md:text-2xl font-black tracking-tight">👑 스누민턴 임원진</h1>
               <p className="text-slate-300 text-xs md:text-sm mt-1">동아리 일정 및 출석 관리</p>
             </div>
             <div className="flex gap-2">
@@ -682,15 +683,14 @@ export default function AdminDashboard() {
                 <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col gap-3">
                   <h3 className="font-black text-slate-800 text-base md:text-lg">새 부원 일괄 추가</h3>
                   <textarea value={bulkMemberNames} onChange={(e) => setBulkMemberNames(e.target.value)} placeholder="엑셀 복붙..." className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl outline-none text-sm" />
-                  <div className="flex gap-2 justify-end items-center mt-2">
-                    <select value={newMemberType} onChange={(e) => setNewMemberType(e.target.value)} className="px-3 py-2 border rounded-xl text-sm font-bold"><option value="member">부원</option><option value="ob">OB</option></select>
+                  <div className="flex justify-end items-center mt-2">
                     <button onClick={handleAddMembers} className="px-4 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 text-sm">등록</button>
                   </div>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                  <div className="p-4 bg-slate-100 font-bold text-slate-600 text-sm flex justify-between"><span>전체 명단 ({members.length}명)</span><span className="text-xs text-slate-400 font-normal">※ 임원진 뱃지가 함께 표시됩니다.</span></div>
+                  <div className="p-4 bg-slate-100 font-bold text-slate-600 text-sm flex justify-between"><span>부원 명단 ({clubMembers.length}명)</span><span className="text-xs text-slate-400 font-normal">※ 임원진은 뱃지로 함께 표시됩니다.</span></div>
                   <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto custom-scrollbar">
-                    {members.map(m => (
+                    {clubMembers.map(m => (
                       <div key={m.id} className="flex justify-between items-center p-3 hover:bg-slate-50 transition-colors">
                         <div className="flex items-center gap-3"><span className="font-bold text-sm text-slate-800">{m.name}</span>{getRoleBadge(m.user_type)}</div>
                         <button onClick={() => handleDeleteMember(m.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1 transition-colors">삭제</button>

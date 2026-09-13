@@ -44,8 +44,8 @@ const dict = {
     name: "이름",
     total: "총 횟수",
     regular: "정규",
-    adminLogin: "👑 운영진 로그인",
-    adminDesc: "관리자 전용 페이지입니다. 비밀번호를 입력해주세요.",
+    adminLogin: "👑 임원진 로그인",
+    adminDesc: "임원진 전용 페이지입니다. 비밀번호를 입력해주세요.",
     pwPlaceholder: "",
     cancel: "취소",
     enter: "입장",
@@ -115,8 +115,8 @@ const dict = {
     name: "Name",
     total: "Total",
     regular: "Regular",
-    adminLogin: "👑 Admin Login",
-    adminDesc: "For admins only. Please enter the password.",
+    adminLogin: "👑 Executive Team Login",
+    adminDesc: "For the executive team only. Please enter the password.",
     pwPlaceholder: "",
     cancel: "Cancel",
     enter: "Enter",
@@ -486,7 +486,7 @@ export default function Home() {
         <button onClick={() => setLang(lang === "ko" ? "en" : "ko")} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-full transition-colors shadow-sm">
           {lang === "ko" ? "🌐 EN" : "🌐 KO"}
         </button>
-        <a href="/admin/login" className="text-2xl opacity-30 hover:opacity-100 transition-opacity" title="Admin" aria-label="운영진 로그인">⚙️</a>
+        <a href="/admin/login" className="text-2xl opacity-30 hover:opacity-100 transition-opacity" title="임원진 로그인" aria-label="임원진 로그인">⚙️</a>
       </div>
 
       <div className="flex items-center justify-center gap-3 my-8">

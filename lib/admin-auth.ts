@@ -42,7 +42,7 @@ export async function verifyAdminPassword(password: string) {
 
 export async function createAdminSession() {
   const config = getConfig();
-  if (!config) throw new Error("관리자 인증 환경 변수가 설정되지 않았습니다.");
+  if (!config) throw new Error("임원진 인증 환경 변수가 설정되지 않았습니다.");
 
   const payload: SessionPayload = {
     exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,

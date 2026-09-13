@@ -16,7 +16,7 @@ function isSameOrigin(request: Request) {
 
 export async function POST(request: Request) {
   if (!isAdminAuthConfigured()) {
-    return NextResponse.json({ message: "관리자 로그인 설정을 확인해주세요." }, { status: 500 });
+    return NextResponse.json({ message: "임원진 로그인 설정을 확인해주세요." }, { status: 500 });
   }
 
   if (!isSameOrigin(request)) {

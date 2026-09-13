@@ -5,7 +5,7 @@ import { hasAdminSession } from "@/lib/admin-auth";
 
 export async function requireAdminApi(request: Request) {
   if (!(await hasAdminSession())) {
-    return NextResponse.json({ message: "운영진 인증이 필요합니다." }, { status: 401 });
+    return NextResponse.json({ message: "임원진 인증이 필요합니다." }, { status: 401 });
   }
 
   if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
@@ -19,6 +19,6 @@ export async function requireAdminApi(request: Request) {
 }
 
 export function databaseError(error: unknown) {
-  console.error("관리자 DB 요청 실패", error);
+  console.error("임원진 DB 요청 실패", error);
   return NextResponse.json({ message: "요청을 처리하지 못했습니다." }, { status: 500 });
 }
