@@ -16,7 +16,9 @@ set enforce_application_uniqueness = false
 where enforce_application_uniqueness is null;
 
 alter table public.applications
-  alter column enforce_application_uniqueness set default true,
+  alter column enforce_application_uniqueness set default true;
+
+alter table public.applications
   alter column enforce_application_uniqueness set not null;
 
 -- One non-guest application per name per event for newly created records.
