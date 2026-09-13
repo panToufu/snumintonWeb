@@ -687,7 +687,7 @@ export default function Home() {
                       <td className="p-2 md:p-3 text-slate-400 font-bold sticky left-0 bg-white/95 backdrop-blur-sm z-10 border-r border-slate-50">{idx + 1}</td><td className="p-2 md:p-3 text-left font-bold text-slate-800 sticky left-8 md:left-12 bg-white/95 backdrop-blur-sm z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-50 max-w-[4rem] md:max-w-none truncate">{stat.name}</td><td className="p-2 md:p-3 font-black text-blue-600 bg-blue-50/30 border-r border-slate-50">{stat.count}</td>
                       {monthEventsList.map(ev => {
                         const status = stat.attendanceRecord[ev.id];
-                        return <td key={ev.id} className="p-1.5 md:p-2 border-r border-slate-50 text-base">{status === 'present' ? <span title="출석">🟢</span> : status === 'late' ? <span title="지각">🔺</span> : status === 'none' ? <span className="text-red-300 font-bold text-[10px] md:text-xs" title="결석">✕</span> : <span className="text-slate-200 font-light text-[10px] md:text-xs">-</span>}</td>;
+                        return <td key={ev.id} className="p-1.5 md:p-2 border-r border-slate-50 text-base">{status === 'present' ? <span title="출석">🟢</span> : status === 'late' ? <span title="지각">🔺</span> : status === 'absent' ? <span className="text-red-300 font-bold text-[10px] md:text-xs" title="불참">✕</span> : <span className="text-slate-200 font-light text-[10px] md:text-xs">-</span>}</td>;
                       })}
                     </tr>
                   ))}
