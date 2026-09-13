@@ -5,32 +5,49 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 const eventFields = "id,title,type,start_at,end_at,location,max_capacity,participating_execs,allow_registration,allow_guests,has_afterparty,ask_level,is_attendance_counted,registration_start_at,color";
 
+function isThirtyMinuteAligned(date: Date) {
+  return date.getUTCMinutes() % 30 === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0;
+}
+
 function normalizeEvent(input: Record<string, unknown>) {
-  const title = typeof input.title === "string" ? input.title.trim().slice(0, 120) : "";
-  const type = input.type === "normal" || input.type === "lesson" || input.type === "special" ? input.type : "normal";
+  const type = input.type === "normal" || input.type === "lesson" || input.type === "special" || input.type === "lightning" ? input.type : "normal";
+  const title = type === "lightning" ? "번개운동" : (typeof input.title === "string" ? input.title.trim().slice(0, 120) : "");
   const startAt = typeof input.start_at === "string" ? input.start_at : "";
   const endAt = typeof input.end_at === "string" ? input.end_at : "";
   const capacity = Number(input.max_capacity);
+  const startDate = new Date(startAt);
+  const endDate = new Date(endAt);
+  const registrationStart = typeof input.registration_start_at === "string" ? new Date(input.registration_start_at) : null;
+  const isLightning = type === "lightning";
 
-  if (!title || Number.isNaN(Date.parse(startAt)) || Number.isNaN(Date.parse(endAt)) || Date.parse(endAt) <= Date.parse(startAt) || !Number.isInteger(capacity) || capacity < 0 || capacity > 500) {
+  if (
+    !title
+    || Number.isNaN(startDate.getTime())
+    || Number.isNaN(endDate.getTime())
+    || endDate.getTime() <= startDate.getTime()
+    || !isThirtyMinuteAligned(startDate)
+    || !isThirtyMinuteAligned(endDate)
+    || (!isLightning && (!Number.isInteger(capacity) || capacity < 0 || capacity > 500))
+    || (registrationStart && (Number.isNaN(registrationStart.getTime()) || !isThirtyMinuteAligned(registrationStart)))
+  ) {
     return null;
   }
 
   return {
     title,
     type,
-    start_at: new Date(startAt).toISOString(),
-    end_at: new Date(endAt).toISOString(),
+    start_at: startDate.toISOString(),
+    end_at: endDate.toISOString(),
     location: typeof input.location === "string" ? input.location.trim().slice(0, 200) : "장소 미정",
-    max_capacity: capacity,
+    max_capacity: isLightning ? 0 : capacity,
     participating_execs: Array.isArray(input.participating_execs) ? input.participating_execs.filter((name): name is string => typeof name === "string").map((name) => name.slice(0, 80)) : [],
-    allow_registration: input.allow_registration !== false,
-    allow_guests: input.allow_guests !== false,
-    has_afterparty: input.has_afterparty === true,
-    ask_level: input.ask_level === true,
-    is_attendance_counted: input.is_attendance_counted !== false,
-    registration_start_at: typeof input.registration_start_at === "string" && !Number.isNaN(Date.parse(input.registration_start_at)) ? new Date(input.registration_start_at).toISOString() : null,
-    color: type === "normal" ? "#3b82f6" : type === "lesson" ? "#8b5cf6" : "#ec4899",
+    allow_registration: isLightning ? false : input.allow_registration !== false,
+    allow_guests: isLightning ? false : input.allow_guests !== false,
+    has_afterparty: isLightning ? false : input.has_afterparty === true,
+    ask_level: isLightning ? false : input.ask_level === true,
+    is_attendance_counted: type === "normal" || type === "lesson" ? input.is_attendance_counted !== false : false,
+    registration_start_at: isLightning || !registrationStart ? null : registrationStart.toISOString(),
+    color: type === "normal" ? "#3b82f6" : type === "lesson" ? "#8b5cf6" : type === "lightning" ? "#f59e0b" : "#ec4899",
   };
 }
 

@@ -8,7 +8,8 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import luxon3Plugin from "@fullcalendar/luxon3";
 import { useAppFeedback } from "@/components/AppFeedback";
-import type { AdminCalendarEvent, AttendanceEvent, AttendanceRanking, ClubApplication, ClubEvent, ClubMember } from "@/lib/club-types";
+import { koreaDateInputValue } from "@/lib/attendance-range";
+import type { AdminCalendarEvent, AttendanceEvent, AttendanceRanking, ClubApplication, ClubEvent, ClubMember, EventType } from "@/lib/club-types";
 
 async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -21,6 +22,11 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw new Error(body.message ?? "요청을 처리하지 못했습니다.");
   return body;
 }
+
+const eventColor = (type: EventType) => type === "normal" ? "#3b82f6" : type === "lesson" ? "#8b5cf6" : type === "lightning" ? "#f59e0b" : "#ec4899";
+const isAttendanceManagedEvent = (event: Pick<ClubEvent, "type">) => event.type !== "special" && event.type !== "lightning";
+const firstDayOfCurrentKoreaMonth = () => `${koreaDateInputValue().slice(0, 7)}-01`;
+const isThirtyMinuteTime = (value: string) => /^\d{4}-\d{2}-\d{2}T\d{2}:(00|30)(?::00)?$/.test(value);
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -48,6 +54,9 @@ export default function AdminDashboard() {
   
   const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
+  const [attendanceDateRange, setAttendanceDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
+  const [attendanceStartDate, setAttendanceStartDate] = useState(firstDayOfCurrentKoreaMonth);
+  const [attendanceEndDate, setAttendanceEndDate] = useState(koreaDateInputValue);
 
   const [regYear] = useState(new Date().getFullYear());
   const [regMonth, setRegMonth] = useState(new Date().getMonth() + 1);
@@ -64,11 +73,13 @@ export default function AdminDashboard() {
   const [editCountAttendance, setEditCountAttendance] = useState(true);
   const [editExecs, setEditExecs] = useState<string[]>([]);
   const [editAllowGuests, setEditAllowGuests] = useState(true);
+  const [editEventType, setEditEventType] = useState<EventType>("normal");
 
   const [isEditAppModalOpen, setIsEditAppModalOpen] = useState(false);
   const [editAppTarget, setEditAppTarget] = useState<ClubApplication | null>(null);
 
   const [spEventTitle, setSpEventTitle] = useState("");
+  const [spEventType, setSpEventType] = useState<"special" | "lightning">("special");
   const [spEventStartDate, setSpEventStartDate] = useState(""); 
   const [spEventEndDate, setSpEventEndDate] = useState("");      
   const [spEventLocation, setSpEventLocation] = useState("");
@@ -119,7 +130,7 @@ export default function AdminDashboard() {
         start: ev.start_at, 
         end: ev.end_at ?? undefined,
         id: ev.id,
-        color: ev.type === 'normal' ? '#3b82f6' : ev.type === 'lesson' ? '#8b5cf6' : '#ec4899'
+        color: eventColor(ev.type)
       }));
       setEvents(formattedEvents);
     }
@@ -161,12 +172,23 @@ export default function AdminDashboard() {
     setEditCountAttendance(eventProps.is_attendance_counted ?? true);
     setEditExecs(eventProps.participating_execs ?? []);
     setEditAllowGuests(eventProps.allow_guests ?? true);
+    setEditEventType(eventProps.type ?? "normal");
     setIsEditModalOpen(true);
   };
 
   const handleUpdateEvent = async () => {
     try {
-      await adminRequest(`/api/admin/events/${editEventId}`, { method: "PATCH", body: JSON.stringify({ title: editTitle, location: editLocation, max_capacity: editCapacity, is_attendance_counted: editCountAttendance, participating_execs: editExecs, allow_guests: editAllowGuests }) });
+      const update = editEventType === "lightning"
+        ? { location: editLocation }
+        : {
+            title: editTitle,
+            location: editLocation,
+            max_capacity: editCapacity,
+            participating_execs: editExecs,
+            allow_guests: editAllowGuests,
+            ...(editEventType === "normal" || editEventType === "lesson" ? { is_attendance_counted: editCountAttendance } : {}),
+          };
+      await adminRequest(`/api/admin/events/${editEventId}`, { method: "PATCH", body: JSON.stringify(update) });
       showToast("일정 정보가 성공적으로 수정되었습니다! ✅", "success"); setIsEditModalOpen(false); fetchEvents();
     } catch (error) { showToast("수정 중 오류가 발생했습니다: " + (error as Error).message, "error"); }
   };
@@ -246,7 +268,10 @@ export default function AdminDashboard() {
     
     const activeMembers = members.filter(m => m.user_type !== 'ob');
 
-    const { events: eventsList, applications: apps } = await adminRequest<{ events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/admin/attendance-report?year=${currentYear}&month=${currentMonth}`);
+    const query = attendanceDateRange
+      ? new URLSearchParams({ start_date: attendanceDateRange.startDate, end_date: attendanceDateRange.endDate })
+      : new URLSearchParams({ year: String(currentYear), month: String(currentMonth) });
+    const { events: eventsList, applications: apps } = await adminRequest<{ events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/admin/attendance-report?${query}`);
     setMonthEventsList(eventsList);
     const eventIds = eventsList.map(e => e.id);
 
@@ -265,12 +290,21 @@ export default function AdminDashboard() {
     });
     ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     setMonthlyRanking(ranking);
-  }, [currentMonth, currentYear, members]);
+  }, [attendanceDateRange, currentMonth, currentYear, members]);
 
   const moveCurrentMonth = (direction: -1 | 1) => {
+    setAttendanceDateRange(null);
     const nextDate = new Date(currentYear, currentMonth - 1 + direction, 1);
     setCurrentYear(nextDate.getFullYear());
     setCurrentMonth(nextDate.getMonth() + 1);
+  };
+
+  const applyCustomAttendanceRange = () => {
+    if (!attendanceStartDate || !attendanceEndDate || attendanceStartDate > attendanceEndDate) {
+      showToast("조회 시작일과 종료일을 확인해주세요.", "error");
+      return;
+    }
+    setAttendanceDateRange({ startDate: attendanceStartDate, endDate: attendanceEndDate });
   };
 
   const toggleRegDate = (dateStr: string) => {
@@ -299,36 +333,40 @@ export default function AdminDashboard() {
   };
 
   const handleRegisterSpecialEvent = async () => {
-    if (!spEventTitle.trim()) return showToast("행사 제목을 입력해주세요.", "error");
-    if (!spEventStartDate || !spEventEndDate) return showToast("행사의 시작 시간과 종료 시간을 모두 설정해주세요.", "error");
-    if (spEventAllowRegistration && !spEventRegistrationStart) return showToast("참가 신청을 언제부터 받을지(신청 시작 시간) 설정해주세요.", "error");
+    const isLightning = spEventType === "lightning";
+    const eventLabel = isLightning ? "번개운동" : "행사";
+    if (!isLightning && !spEventTitle.trim()) return showToast("행사 제목을 입력해주세요.", "error");
+    if (!spEventStartDate || !spEventEndDate) return showToast(`${eventLabel}의 시작 시간과 종료 시간을 모두 설정해주세요.`, "error");
+    if (!isThirtyMinuteTime(spEventStartDate) || !isThirtyMinuteTime(spEventEndDate) || (spEventRegistrationStart && !isThirtyMinuteTime(spEventRegistrationStart))) return showToast("시간은 정각 또는 30분 단위로 설정해주세요.", "error");
+    if (!isLightning && spEventAllowRegistration && !spEventRegistrationStart) return showToast("참가 신청을 언제부터 받을지(신청 시작 시간) 설정해주세요.", "error");
 
-    if (!await askForConfirmation(`'${spEventTitle}' 행사를 등록하시겠습니까?`, "등록")) return;
+    if (!await askForConfirmation(`'${isLightning ? "번개운동" : spEventTitle}' ${eventLabel}을 등록하시겠습니까?`, "등록")) return;
 
     const startAt = new Date(spEventStartDate).toISOString();
     const endAt = new Date(spEventEndDate).toISOString();
     const regStartAt = (spEventAllowRegistration && spEventRegistrationStart) ? new Date(spEventRegistrationStart).toISOString() : null;
     
     const payload = { 
-      title: spEventTitle, 
-      type: "special", 
+      title: isLightning ? "번개운동" : spEventTitle,
+      type: spEventType,
       start_at: startAt, 
       end_at: endAt,
       location: spEventLocation || "장소 미정", 
-      max_capacity: spEventAllowRegistration ? spEventCapacity : 0, 
-      has_afterparty: spEventAllowRegistration ? spEventAfterparty : false,
-      is_attendance_counted: false, 
+      max_capacity: !isLightning && spEventAllowRegistration ? spEventCapacity : 0,
+      has_afterparty: !isLightning && spEventAllowRegistration ? spEventAfterparty : false,
+      is_attendance_counted: false,
       participating_execs: [],
-      allow_registration: spEventAllowRegistration,
-      registration_start_at: regStartAt, 
-      color: '#ec4899', 
+      allow_registration: !isLightning && spEventAllowRegistration,
+      registration_start_at: isLightning ? null : regStartAt,
+      color: isLightning ? '#f59e0b' : '#ec4899',
       allow_guests: false
     };
     
     try {
       await adminRequest("/api/admin/events", { method: "POST", body: JSON.stringify({ events: [payload] }) });
-      showToast("행사 등록 완료! 🎉", "success");
+      showToast(`${eventLabel} 등록 완료! 🎉`, "success");
       setSpEventTitle("");
+      setSpEventType("special");
       setSpEventStartDate("");
       setSpEventEndDate("");
       setSpEventRegistrationStart("");
@@ -336,9 +374,9 @@ export default function AdminDashboard() {
       setSpEventCapacity(50);
       setSpEventAfterparty(false);
       setSpEventAllowRegistration(true);
-      fetchEvents(); 
-      setAdminTab("calendar"); 
-    } catch (error) { showToast("행사 등록 중 오류가 발생했습니다: " + (error as Error).message, "error"); }
+      fetchEvents();
+      setAdminTab("calendar");
+    } catch (error) { showToast(`${eventLabel} 등록 중 오류가 발생했습니다: ` + (error as Error).message, "error"); }
   };
 
   const getCalendarCells = () => {
@@ -366,6 +404,14 @@ export default function AdminDashboard() {
   };
 
   const currentSelectedEventObj = events.find(e => e.id === selectedEventId);
+  const attendanceEvents = events.filter(isAttendanceManagedEvent);
+  const selectedAttendanceEvent = currentSelectedEventObj && isAttendanceManagedEvent(currentSelectedEventObj) ? currentSelectedEventObj : null;
+  const selectEventForAttendance = (info: EventClickArg) => {
+    setSelectedEventId(info.event.id);
+    setSelectedEventTitle(info.event.title);
+    setSelectedEventDate(info.event.start);
+    void fetchApplicants(info.event.id);
+  };
 
   const attendanceDisplayList = applicants.filter(app => app.user_type !== 'ob' && app.user_type !== 'guest');
   
@@ -412,7 +458,7 @@ export default function AdminDashboard() {
             <button onClick={() => setAdminTab("members")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "members" ? "border-emerald-400 text-emerald-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>👥 부원 명단</button>
             <button onClick={() => setAdminTab("executives")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "executives" ? "border-rose-400 text-rose-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>👑 임원진 관리</button>
             <button onClick={() => setAdminTab("register")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "register" ? "border-purple-400 text-purple-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>🚀 정기운동 등록</button>
-            <button onClick={() => setAdminTab("special")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "special" ? "border-pink-400 text-pink-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>🎈 행사 등록</button>
+            <button onClick={() => setAdminTab("special")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "special" ? "border-pink-400 text-pink-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>🎈 행사·번개 등록</button>
           </div>
         </div>
 
@@ -422,10 +468,10 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">출석 체크용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={selectEventForAttendance} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
-                {!selectedEventId ? (
+                {!selectedAttendanceEvent ? (
                   <div className="h-40 md:h-full flex flex-col items-center justify-center text-slate-400"><span className="text-3xl md:text-4xl mb-2 md:mb-4">👆</span><p className="font-medium text-sm">달력에서 일정을 선택해주세요.</p></div>
                 ) : (
                   <div>
@@ -535,10 +581,10 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">제출 확인용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={selectEventForAttendance} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
-                {!selectedEventId ? (
+                {!selectedAttendanceEvent ? (
                   <div className="h-40 md:h-full flex flex-col items-center justify-center text-slate-400"><span className="text-3xl md:text-4xl mb-2 md:mb-4">👆</span><p className="font-medium text-sm">달력에서 일정을 선택해주세요.</p></div>
                 ) : (
                   <div className="space-y-6">
@@ -647,10 +693,24 @@ export default function AdminDashboard() {
           {adminTab === "monthly" && (
             <div className="w-full p-3 md:p-8 overflow-y-auto bg-slate-50 custom-scrollbar">
               <div className="max-w-full mx-auto">
-                <div className="flex items-center justify-between mb-4 md:mb-6 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100">
-                  <button onClick={() => moveCurrentMonth(-1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">◀</button>
-                  <div className="text-center"><h2 className="text-lg md:text-2xl font-black text-slate-800">{currentYear}년 {currentMonth}월 상세 출석부</h2></div>
-                  <button onClick={() => moveCurrentMonth(1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">▶</button>
+                <div className="mb-4 md:mb-6 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => moveCurrentMonth(-1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base" title="이전 달 보기">◀</button>
+                    <div className="text-center"><h2 className="text-lg md:text-2xl font-black text-slate-800">{attendanceDateRange ? `${attendanceDateRange.startDate} ~ ${attendanceDateRange.endDate} 상세 출석부` : `${currentYear}년 ${currentMonth}월 상세 출석부`}</h2></div>
+                    <button onClick={() => moveCurrentMonth(1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base" title="다음 달 보기">▶</button>
+                  </div>
+                  <div className="flex flex-col lg:flex-row gap-2 lg:items-end lg:justify-center border-t border-slate-100 pt-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-slate-500">기간</label>
+                      <input type="date" value={attendanceStartDate} onChange={(e) => setAttendanceStartDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium" aria-label="출석 조회 시작일" />
+                      <span className="text-slate-400">~</span>
+                      <input type="date" value={attendanceEndDate} onChange={(e) => setAttendanceEndDate(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium" aria-label="출석 조회 종료일" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={applyCustomAttendanceRange} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">기간 조회</button>
+                      <button onClick={() => setAttendanceDateRange(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-200">월별 보기</button>
+                    </div>
+                  </div>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto custom-scrollbar">
                   <table className="w-full text-xs md:text-sm text-center min-w-max border-collapse">
@@ -659,7 +719,7 @@ export default function AdminDashboard() {
                         <th className="p-2 md:p-3 sticky left-0 bg-slate-100 z-10 w-8 md:w-16 border-r border-slate-200">순위</th><th className="p-2 md:p-3 sticky left-8 md:left-16 bg-slate-100 z-10 w-16 md:w-24 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-200">이름</th><th className="p-2 md:p-3 w-12 md:w-20 text-blue-600 border-r border-slate-200">총 횟수</th>
                         {monthEventsList.map(ev => (
                           <th key={ev.id} className="p-1.5 md:p-2 min-w-[36px] md:min-w-[50px] border-r border-slate-100 bg-white">
-                            <div className="flex flex-col items-center"><span className="text-[8px] md:text-[10px] text-slate-400 font-medium">{ev.type === 'normal' ? '정규' : ev.type === 'lesson' ? '레슨' : '행사'}</span><span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}일</span></div>
+                            <div className="flex flex-col items-center"><span className="text-[8px] md:text-[10px] text-slate-400 font-medium">{ev.type === 'normal' ? '정규' : ev.type === 'lesson' ? '레슨' : ev.type === 'lightning' ? '번개' : '행사'}</span><span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}일</span></div>
                           </th>
                         ))}
                       </tr>
@@ -806,32 +866,41 @@ export default function AdminDashboard() {
             <div className="w-full p-4 md:p-8 overflow-y-auto bg-slate-50 flex justify-center items-start">
               <div className="w-full max-w-2xl bg-white p-6 md:p-10 rounded-3xl shadow-sm border border-slate-200">
                 <h2 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight mb-8 flex items-center gap-2">
-                  <span className="text-2xl">🎈</span> 행사 등록
+                  <span className="text-2xl">🎈</span> 행사·번개운동 등록
                 </h2>
-                
+
                 <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                    <button type="button" onClick={() => setSpEventType("special")} className={`py-3 rounded-lg text-sm font-black transition-colors ${spEventType === "special" ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>🎈 행사</button>
+                    <button type="button" onClick={() => setSpEventType("lightning")} className={`py-3 rounded-lg text-sm font-black transition-colors ${spEventType === "lightning" ? "bg-white text-amber-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>⚡ 번개운동</button>
+                  </div>
+
+                  {spEventType === "special" && (
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2">📝 행사 제목</label>
                     <input type="text" value={spEventTitle} onChange={(e) => setSpEventTitle(e.target.value)} placeholder="" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                   </div>
-                  
+                  )}
+                  {spEventType === "lightning" && <p className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-800 font-medium">번개운동은 시간과 장소만 등록하며, 정원·참가 신청·출석 관리는 사용하지 않습니다.</p>}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 시작 날짜 및 시간</label>
-                      <input type="datetime-local" value={spEventStartDate} onChange={(e) => setSpEventStartDate(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
+                      <input type="datetime-local" step="1800" value={spEventStartDate} onChange={(e) => setSpEventStartDate(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 종료 날짜 및 시간</label>
-                      <input type="datetime-local" value={spEventEndDate} onChange={(e) => setSpEventEndDate(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
+                      <input type="datetime-local" step="1800" value={spEventEndDate} onChange={(e) => setSpEventEndDate(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                     </div>
                   </div>
+                  <p className="-mt-3 text-[11px] text-slate-400">시간은 30분 단위로 설정할 수 있습니다.</p>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-2">📍 장소 (선택)</label>
                     <input type="text" value={spEventLocation} onChange={(e) => setSpEventLocation(e.target.value)} placeholder="" className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                   </div>
 
-                  <div className="flex items-center justify-between p-5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mt-4 hover:border-pink-300 transition-colors" onClick={() => setSpEventAllowRegistration(!spEventAllowRegistration)}>
+                  {spEventType === "special" && <div className="flex items-center justify-between p-5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer mt-4 hover:border-pink-300 transition-colors" onClick={() => setSpEventAllowRegistration(!spEventAllowRegistration)}>
                     <div>
                       <div className="font-bold text-sm text-slate-800">✅ 참가 신청 받기</div>
                       <div className="text-[11px] text-slate-500 mt-1">해제 시 신청을 받지 않고 달력에 단순 공지로만 띄웁니다.</div>
@@ -839,13 +908,13 @@ export default function AdminDashboard() {
                     <div className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${spEventAllowRegistration ? 'bg-pink-500' : 'bg-slate-300'}`}>
                       <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${spEventAllowRegistration ? 'left-7' : 'left-1'}`} />
                     </div>
-                  </div>
+                  </div>}
 
-                  {spEventAllowRegistration && (
+                  {spEventType === "special" && spEventAllowRegistration && (
                     <div className="space-y-6 pt-2">
                       <div>
                         <label className="block text-xs font-bold text-slate-500 mb-2">⏰ 참가 신청 시작(오픈) 시간</label>
-                        <input type="datetime-local" value={spEventRegistrationStart} onChange={(e) => setSpEventRegistrationStart(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
+                        <input type="datetime-local" step="1800" value={spEventRegistrationStart} onChange={(e) => setSpEventRegistrationStart(e.target.value)} className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" />
                         <p className="text-[10px] text-slate-400 mt-1">설정한 시간 전에는 부원들이 신청 버튼을 누르지 못합니다.</p>
                       </div>
 
@@ -867,8 +936,8 @@ export default function AdminDashboard() {
                     </div>
                   )}
 
-                  <button onClick={handleRegisterSpecialEvent} className="w-full py-4 bg-pink-500 text-white font-black rounded-xl hover:bg-pink-600 transition-colors shadow-lg shadow-pink-500/30 text-sm md:text-base mt-6">
-                    행사 등록하기 🚀
+                  <button onClick={handleRegisterSpecialEvent} className={`w-full py-4 text-white font-black rounded-xl transition-colors shadow-lg text-sm md:text-base mt-6 ${spEventType === "lightning" ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/30" : "bg-pink-500 hover:bg-pink-600 shadow-pink-500/30"}`}>
+                    {spEventType === "lightning" ? "번개운동 등록하기 ⚡" : "행사 등록하기 🚀"}
                   </button>
                 </div>
               </div>
@@ -885,11 +954,11 @@ export default function AdminDashboard() {
                 <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
               </div>
               
-              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">일정 제목 (선택)</label><input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>
+              {editEventType !== "lightning" && <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">일정 제목 (선택)</label><input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>}
               <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">📍 장소 변경</label><input type="text" value={editLocation} onChange={(e) => setEditLocation(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">👥 정원 수정 (명)</label><input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Number(e.target.value))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>
-              
-              <div>
+              {editEventType !== "lightning" && <div><label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">👥 정원 수정 (명)</label><input type="number" value={editCapacity} onChange={(e) => setEditCapacity(Number(e.target.value))} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-400 font-bold text-slate-800 text-sm" /></div>}
+
+              {editEventType !== "lightning" && <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">👑 참여 임원진 선택 (신청 정원에 미포함)</label>
                 {executives.length === 0 ? (
                   <p className="text-xs text-slate-400 ml-1">등록된 임원진이 없습니다.</p>
@@ -909,17 +978,17 @@ export default function AdminDashboard() {
                     })}
                   </div>
                 )}
-              </div>
+              </div>}
 
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditAllowGuests(!editAllowGuests)}>
+              {editEventType !== "lightning" && <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditAllowGuests(!editAllowGuests)}>
                 <div><div className="font-bold text-xs md:text-sm text-slate-800">게스트 신청 허용</div></div>
                 <div className={`w-10 md:w-12 h-5 md:h-6 rounded-full transition-colors relative ${editAllowGuests ? 'bg-emerald-400' : 'bg-slate-300'}`}><div className={`w-3.5 h-3.5 md:w-4 md:h-4 bg-white rounded-full absolute top-[3px] md:top-1 transition-all ${editAllowGuests ? 'left-[22px] md:left-7' : 'left-1'}`} /></div>
-              </div>
+              </div>}
 
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditCountAttendance(!editCountAttendance)}>
+              {(editEventType === "normal" || editEventType === "lesson") && <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer" onClick={() => setEditCountAttendance(!editCountAttendance)}>
                 <div><div className="font-bold text-xs md:text-sm text-slate-800">출석부 통계 반영</div><div className="text-[9px] md:text-[10px] text-slate-500 mt-0.5">이 일정을 월별 출석 횟수에 포함합니다.</div></div>
                 <div className={`w-10 md:w-12 h-5 md:h-6 rounded-full transition-colors relative ${editCountAttendance ? 'bg-amber-400' : 'bg-slate-300'}`}><div className={`w-3.5 h-3.5 md:w-4 md:h-4 bg-white rounded-full absolute top-[3px] md:top-1 transition-all ${editCountAttendance ? 'left-[22px] md:left-7' : 'left-1'}`} /></div>
-              </div>
+              </div>}
               
               <div className="flex gap-2 md:gap-3 mt-2 md:mt-4">
                 <button onClick={handleDeleteEvent} className="px-4 py-3 bg-red-50 text-red-500 font-bold text-sm rounded-xl hover:bg-red-100 transition-colors border border-red-100 whitespace-nowrap">🗑️ 삭제</button>

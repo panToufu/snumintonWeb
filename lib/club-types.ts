@@ -1,4 +1,4 @@
-export type EventType = "normal" | "lesson" | "special";
+export type EventType = "normal" | "lesson" | "special" | "lightning";
 
 export type ClubEvent = {
   id: string;

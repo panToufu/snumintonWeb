@@ -7,6 +7,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import luxon3Plugin from "@fullcalendar/luxon3";
 import { useAppFeedback } from "@/components/AppFeedback";
+import { koreaDateInputValue } from "@/lib/attendance-range";
 import type { AttendanceEvent, AttendanceRanking, CalendarEvent, ClubApplication, ClubEvent, ClubMember, ClubPoll, SelectedClubEvent } from "@/lib/club-types";
 import { getRegistrationStart } from "@/lib/registration-time";
 
@@ -20,11 +21,15 @@ async function publicRequest<T>(path: string, init?: RequestInit) {
   return body;
 }
 
+const eventColor = (type: ClubEvent["type"]) => type === "normal" ? "#3b82f6" : type === "lesson" ? "#8b5cf6" : type === "lightning" ? "#f59e0b" : "#ec4899";
+const firstDayOfCurrentKoreaMonth = () => `${koreaDateInputValue().slice(0, 7)}-01`;
+
 const dict = {
   ko: {
     ongoing: "📌 진행 중인 투표 및 행사",
     lesson: "정기 레슨",
-    special: "행사", 
+    special: "행사",
+    lightning: "번개운동",
     date: "일시:",
     applyView: "신청/보기",
     suggestion: "건의함",
@@ -45,6 +50,11 @@ const dict = {
     name: "이름",
     total: "총 횟수",
     regular: "정규",
+    customPeriod: "기간 설정",
+    startDate: "시작일",
+    endDate: "종료일",
+    viewPeriod: "기간 조회",
+    monthView: "월별 보기",
     adminLogin: "👑 임원진 로그인",
     adminDesc: "임원진 전용 페이지입니다. 비밀번호를 입력해주세요.",
     pwPlaceholder: "",
@@ -96,6 +106,7 @@ const dict = {
     ongoing: "📌 Ongoing Polls & Events",
     lesson: "Regular Lesson",
     special: "Event",
+    lightning: "Lightning Workout",
     date: "Date:",
     applyView: "Apply / View",
     suggestion: "Suggestion Box",
@@ -116,6 +127,11 @@ const dict = {
     name: "Name",
     total: "Total",
     regular: "Regular",
+    customPeriod: "Custom period",
+    startDate: "Start date",
+    endDate: "End date",
+    viewPeriod: "View period",
+    monthView: "Monthly view",
     adminLogin: "👑 Executive Team Login",
     adminDesc: "For the executive team only. Please enter the password.",
     pwPlaceholder: "",
@@ -194,6 +210,9 @@ export default function Home() {
   const [rankingYear, setRankingYear] = useState(new Date().getFullYear());
   const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
+  const [attendanceDateRange, setAttendanceDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
+  const [attendanceStartDate, setAttendanceStartDate] = useState(firstDayOfCurrentKoreaMonth);
+  const [attendanceEndDate, setAttendanceEndDate] = useState(koreaDateInputValue);
 
   const [isAttendanceAuthOpen, setIsAttendanceAuthOpen] = useState(false);
   const [attendanceAuthName, setAttendanceAuthName] = useState("");
@@ -256,7 +275,7 @@ export default function Home() {
         title: ev.title, 
         start: ev.start_at, 
         end: ev.end_at ?? undefined,
-        color: ev.type === 'normal' ? '#3b82f6' : ev.type === 'lesson' ? '#8b5cf6' : '#ec4899',
+        color: eventColor(ev.type),
         extendedProps: { ...ev } 
       }));
       setEvents(calendarEvents);
@@ -280,7 +299,10 @@ export default function Home() {
 
   const fetchRanking = useCallback(async () => {
     try {
-      const { members, events: eventsList, applications: apps } = await publicRequest<{ members: ClubMember[]; events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/public/attendance?year=${rankingYear}&month=${rankingMonth}`);
+      const query = attendanceDateRange
+        ? new URLSearchParams({ start_date: attendanceDateRange.startDate, end_date: attendanceDateRange.endDate })
+        : new URLSearchParams({ year: String(rankingYear), month: String(rankingMonth) });
+      const { members, events: eventsList, applications: apps } = await publicRequest<{ members: ClubMember[]; events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/public/attendance?${query}`);
       setMonthEventsList(eventsList);
       const ranking = members.map(m => {
         const memberApps = apps.filter(a => a.user_name === m.name) || [];
@@ -300,12 +322,21 @@ export default function Home() {
       setMonthlyRanking([]);
       setMonthEventsList([]);
     }
-  }, [rankingMonth, rankingYear]);
+  }, [attendanceDateRange, rankingMonth, rankingYear]);
 
   const moveRankingMonth = (direction: -1 | 1) => {
+    setAttendanceDateRange(null);
     const nextDate = new Date(rankingYear, rankingMonth - 1 + direction, 1);
     setRankingYear(nextDate.getFullYear());
     setRankingMonth(nextDate.getMonth() + 1);
+  };
+
+  const applyCustomAttendanceRange = () => {
+    if (!attendanceStartDate || !attendanceEndDate || attendanceStartDate > attendanceEndDate) {
+      showToast("조회 시작일과 종료일을 확인해주세요.", "error");
+      return;
+    }
+    setAttendanceDateRange({ startDate: attendanceStartDate, endDate: attendanceEndDate });
   };
 
   useEffect(() => {
@@ -537,7 +568,7 @@ export default function Home() {
                 return (
                   <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
                     <div>
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : t.special}</span>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : ev.extendedProps.type === 'lightning' ? 'bg-amber-100 text-amber-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : ev.extendedProps.type === 'lightning' ? t.lightning : t.special}</span>
                       <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
                       <p className="text-xs text-slate-500 mt-1">
                         {t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
@@ -602,11 +633,21 @@ export default function Home() {
       {isRankingModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 md:p-6 transition-all" onClick={() => setIsRankingModalOpen(false)}>
           <div className="bg-white w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-slate-900 text-white p-5 md:p-6 flex flex-col md:flex-row justify-between items-center gap-4">
-              <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
-                <button onClick={() => moveRankingMonth(-1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">◀</button>
-                <h2 className="text-xl font-black tracking-tight">{rankingYear}. {String(rankingMonth).padStart(2, '0')} {t.attendanceTitle}</h2>
-                <button onClick={() => moveRankingMonth(1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">▶</button>
+            <div className="bg-slate-900 text-white p-5 md:p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-4 w-full justify-between">
+                <button onClick={() => moveRankingMonth(-1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold" title="이전 달 보기">◀</button>
+                <h2 className="text-lg md:text-xl font-black tracking-tight text-center">{attendanceDateRange ? `${attendanceDateRange.startDate} ~ ${attendanceDateRange.endDate} ${t.attendanceTitle}` : `${rankingYear}. ${String(rankingMonth).padStart(2, '0')} ${t.attendanceTitle}`}</h2>
+                <button onClick={() => moveRankingMonth(1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold" title="다음 달 보기">▶</button>
+              </div>
+              <div className="flex flex-col md:flex-row gap-2 md:items-end md:justify-center border-t border-slate-700 pt-4">
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-300">{t.startDate}<input type="date" value={attendanceStartDate} onChange={(e) => setAttendanceStartDate(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white" /></label>
+                  <label className="flex flex-col gap-1 text-[11px] font-bold text-slate-300">{t.endDate}<input type="date" value={attendanceEndDate} onChange={(e) => setAttendanceEndDate(e.target.value)} className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white" /></label>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={applyCustomAttendanceRange} className="px-4 py-2 bg-blue-500 hover:bg-blue-400 rounded-lg text-sm font-bold">{t.viewPeriod}</button>
+                  <button onClick={() => setAttendanceDateRange(null)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold">{t.monthView}</button>
+                </div>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-auto bg-slate-50 p-0 custom-scrollbar">
@@ -616,7 +657,7 @@ export default function Home() {
                     <th className="p-2 md:p-3 sticky left-0 bg-white z-10 w-8 md:w-12 border-r border-slate-100">{t.rank}</th><th className="p-2 md:p-3 sticky left-8 md:left-12 bg-white z-10 w-16 md:w-24 text-left shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r border-slate-100">{t.name}</th><th className="p-2 md:p-3 w-12 md:w-16 text-blue-600 bg-blue-50/30 border-r border-slate-100">{t.total}</th>
                     {monthEventsList.map(ev => (
                       <th key={ev.id} className="p-1 md:p-2 min-w-[36px] md:min-w-[45px] border-r border-slate-100 bg-white">
-                        <div className="flex flex-col items-center"><span className="text-[8px] md:text-[10px] text-slate-400 font-medium mb-0.5">{ev.type === 'normal' ? t.regular : ev.type === 'lesson' ? t.lesson : t.special}</span><span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}</span></div>
+                        <div className="flex flex-col items-center"><span className="text-[8px] md:text-[10px] text-slate-400 font-medium mb-0.5">{ev.type === 'normal' ? t.regular : ev.type === 'lesson' ? t.lesson : ev.type === 'lightning' ? t.lightning : t.special}</span><span className="text-slate-800 font-black">{new Date(ev.start_at).getDate()}</span></div>
                       </th>
                     ))}
                   </tr>
@@ -652,7 +693,7 @@ export default function Home() {
               <div className={`flex-1 p-8 md:p-12 overflow-y-auto custom-scrollbar ${activeTab === 'info' ? 'block' : 'hidden md:block'}`}>
                 <div className="mb-8">
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-wider">{selectedEvent?.type === 'normal' ? t.regular : selectedEvent?.type === 'lesson' ? t.lesson : t.special}</span>
+                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${selectedEvent?.type === 'lightning' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>{selectedEvent?.type === 'normal' ? t.regular : selectedEvent?.type === 'lesson' ? t.lesson : selectedEvent?.type === 'lightning' ? t.lightning : t.special}</span>
                   </div>
                   <h2 className="text-3xl font-black text-slate-900 leading-tight mb-4">{selectedEvent?.title}</h2>
                   <div className="grid grid-cols-1 gap-3 text-slate-600">

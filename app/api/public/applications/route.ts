@@ -16,7 +16,7 @@ const guestSources = ["인스타", "홍보 글", "부원 소개"];
 
 type EventRow = {
   id: string;
-  type: "normal" | "lesson" | "special";
+  type: "normal" | "lesson" | "special" | "lightning";
   start_at: string;
   end_at: string | null;
   allow_registration: boolean | null;
@@ -104,6 +104,7 @@ export async function POST(request: Request) {
     if (eventRow.allow_registration === false || now > endAt) return requestError("마감된 일정입니다.");
     const registrationStart = getRegistrationStart(eventRow, String(userType));
     if (!registrationStart || now < registrationStart) return requestError("아직 신청 시간이 아닙니다.");
+    if (eventRow.type === "lightning") return requestError("번개운동은 참가 신청을 받지 않는 일정입니다.");
     if (eventRow.type === "special" && userType !== "member") return requestError("행사는 부원만 신청할 수 있습니다.");
     if (userType === "guest" && eventRow.allow_guests === false) return requestError("이 일정은 게스트 신청을 받지 않습니다.");
 
