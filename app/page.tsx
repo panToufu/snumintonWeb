@@ -28,6 +28,7 @@ const dict = {
   ko: {
     ongoing: "📌 일정 및 투표",
     openRegistration: "신청 가능한 행사",
+    noOpenRegistration: "현재 신청받고 있는 행사가 없습니다.",
     upcomingEvents: "다가오는 일정",
     activePolls: "진행 중인 투표",
     pastEvents: "지난 일정",
@@ -100,7 +101,6 @@ const dict = {
     alertError: "신청 중 오류가 발생했습니다: ",
     alertAdminFail: "비밀번호가 일치하지 않습니다.",
     participatingExecs: "참여 임원진",
-    noEvents: "진행 중인 투표 및 행사가 없습니다.",
     guestPaymentTitle: "💸 게스트비 입금 안내",
     guestPaymentDesc: "게스트비 4,000원을 아래 계좌로 입금해주세요.",
     paymentCompleted: "입금했습니다",
@@ -111,6 +111,7 @@ const dict = {
   en: {
     ongoing: "📌 Events & Polls",
     openRegistration: "Open for Registration",
+    noOpenRegistration: "There are no events currently open for registration.",
     upcomingEvents: "Upcoming Events",
     activePolls: "Active Polls",
     pastEvents: "Past Events",
@@ -183,7 +184,6 @@ const dict = {
     alertError: "Error occurred during application: ",
     alertAdminFail: "Incorrect password.",
     participatingExecs: "Participating Managers",
-    noEvents: "There are no ongoing polls or events.",
     guestPaymentTitle: "💸 Guest Fee Transfer",
     guestPaymentDesc: "Please transfer the 4,000 KRW guest fee to the account below.",
     paymentCompleted: "I have transferred",
@@ -518,7 +518,6 @@ export default function Home() {
   const upcomingEvents = listedEvents.filter((event) => !isRegistrationOpen(event) && new Date(event.start).getTime() >= nowTime).sort(sortByStartTime);
   const pastEvents = listedEvents.filter((event) => getEventEndTime(event) < nowTime).sort((first, second) => sortByStartTime(second, first));
   const activePolls = polls.filter((poll) => !poll.deadline || new Date(poll.deadline).getTime() >= nowTime);
-  const hasVisibleItems = openRegistrationEvents.length > 0 || upcomingEvents.length > 0 || activePolls.length > 0 || pastEvents.length > 0;
 
   const openEventModal = (event: CalendarEvent) => {
     setSelectedEvent({ ...event.extendedProps, id: event.id, title: event.title, start: event.extendedProps.start_at || event.start, end: event.extendedProps.end_at || event.end || null } as SelectedClubEvent);
@@ -593,14 +592,15 @@ export default function Home() {
       <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
         <div className="flex items-center justify-between mb-4 px-1"><h2 className="text-lg font-black text-slate-800">{t.ongoing}</h2></div>
         <div className="flex flex-col gap-8 min-h-[250px]">
-          {hasVisibleItems ? (
-            <>
-              {openRegistrationEvents.length > 0 && (
-                <section className="space-y-3">
-                  <div className="flex items-center gap-2 px-1"><h3 className="font-black text-blue-700">✨ {t.openRegistration}</h3><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">{openRegistrationEvents.length}</span></div>
+          <>
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 px-1"><h3 className="font-black text-blue-700">✨ {t.openRegistration}</h3>{openRegistrationEvents.length > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">{openRegistrationEvents.length}</span>}</div>
+                {openRegistrationEvents.length > 0 ? (
                   <div className="flex flex-col gap-3">{openRegistrationEvents.map((event) => renderEventCard(event, false, true))}</div>
-                </section>
-              )}
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-blue-100 bg-blue-50/50 px-5 py-4 text-sm font-medium text-slate-500">{t.noOpenRegistration}</p>
+                )}
+              </section>
 
               {upcomingEvents.length > 0 && (
                 <section className="space-y-3">
@@ -642,13 +642,7 @@ export default function Home() {
                   {isPastEventsOpen && <div className="mt-3 flex flex-col gap-3">{pastEvents.map((event) => renderEventCard(event, true))}</div>}
                 </section>
               )}
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
-              <span className="text-2xl mb-3 opacity-60">🍃</span>
-              <p className="text-sm font-bold">{t.noEvents}</p>
-            </div>
-          )}
+          </>
         </div>
       </div>
 
