@@ -3,6 +3,7 @@ import { databaseError, requireAdminApi } from "@/lib/admin-api";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+const eventFields = "id,title,type,start_at,end_at,location,max_capacity,participating_execs,allow_registration,allow_guests,has_afterparty,ask_level,is_attendance_counted,registration_start_at,color";
 
 function normalizeEvent(input: Record<string, unknown>) {
   const title = typeof input.title === "string" ? input.title.trim().slice(0, 120) : "";
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
   if (unauthorized) return unauthorized;
 
   try {
-    const { data, error } = await getSupabaseAdmin().from("events").select("*").order("start_at", { ascending: false });
+    const { data, error } = await getSupabaseAdmin().from("events").select(eventFields).order("start_at", { ascending: false });
     if (error) return databaseError(error);
     return NextResponse.json({ data });
   } catch (error) {
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     if (events.length !== body.events.length || events.some((event) => !event)) {
       return NextResponse.json({ message: "일정 입력값을 확인해주세요." }, { status: 400 });
     }
-    const { data, error } = await getSupabaseAdmin().from("events").insert(events).select();
+    const { data, error } = await getSupabaseAdmin().from("events").insert(events).select(eventFields);
     if (error) return databaseError(error);
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {

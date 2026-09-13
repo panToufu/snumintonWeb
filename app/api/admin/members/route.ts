@@ -3,13 +3,14 @@ import { databaseError, requireAdminApi } from "@/lib/admin-api";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+const memberFields = "id,name,user_type";
 
 export async function GET(request: Request) {
   const unauthorized = await requireAdminApi(request);
   if (unauthorized) return unauthorized;
 
   try {
-    const { data, error } = await getSupabaseAdmin().from("members").select("*").order("name", { ascending: true });
+    const { data, error } = await getSupabaseAdmin().from("members").select(memberFields).order("name", { ascending: true });
     if (error) return databaseError(error);
     return NextResponse.json({ data });
   } catch (error) {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     });
     if (members.length !== body.members.length) return NextResponse.json({ message: "부원 입력값을 확인해주세요." }, { status: 400 });
 
-    const { data, error } = await getSupabaseAdmin().from("members").insert(members).select();
+    const { data, error } = await getSupabaseAdmin().from("members").insert(members).select(memberFields);
     if (error) return databaseError(error);
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {

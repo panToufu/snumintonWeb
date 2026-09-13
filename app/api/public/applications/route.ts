@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { findMatchingMember } from "@/lib/member-name";
 import { isScryptHash, verifyScryptHash } from "@/lib/password-hash";
+import { getRegistrationStart } from "@/lib/registration-time";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -56,22 +57,6 @@ function phoneIdentity(phone: string) {
   return phone.replace(/\D/g, "");
 }
 
-function registrationStart(event: EventRow, userType: string) {
-  if (event.registration_start_at) return new Date(event.registration_start_at);
-
-  const start = new Date(event.start_at);
-  const hoursBeforeStart = userType === "guest" ? { days: 1, hour: 15 } : { days: 2, hour: 23 };
-  // 기본 신청 시간은 동아리 운영 시간대(Asia/Seoul)를 기준으로 고정한다.
-  const koreaTime = new Date(start.getTime() + 9 * 60 * 60 * 1000);
-  const openAt = Date.UTC(
-    koreaTime.getUTCFullYear(),
-    koreaTime.getUTCMonth(),
-    koreaTime.getUTCDate() - hoursBeforeStart.days,
-    hoursBeforeStart.hour,
-  ) - 9 * 60 * 60 * 1000;
-  return new Date(openAt);
-}
-
 function isSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return false;
@@ -117,7 +102,8 @@ export async function POST(request: Request) {
     const now = new Date();
     const endAt = eventRow.end_at ? new Date(eventRow.end_at) : new Date(new Date(eventRow.start_at).getTime() + 3 * 60 * 60 * 1000);
     if (eventRow.allow_registration === false || now > endAt) return requestError("마감된 일정입니다.");
-    if (now < registrationStart(eventRow, String(userType))) return requestError("아직 신청 시간이 아닙니다.");
+    const registrationStart = getRegistrationStart(eventRow, String(userType));
+    if (!registrationStart || now < registrationStart) return requestError("아직 신청 시간이 아닙니다.");
     if (eventRow.type === "special" && userType !== "member") return requestError("행사는 부원만 신청할 수 있습니다.");
     if (userType === "guest" && eventRow.allow_guests === false) return requestError("이 일정은 게스트 신청을 받지 않습니다.");
 
@@ -213,7 +199,14 @@ export async function POST(request: Request) {
       })
       .select("id,user_name,user_type,participation_type,lesson_choice,afterparty_join,level,applied_at")
       .single();
-    if (insertError) throw insertError;
+    if (insertError) {
+      if (insertError.code === "23505") {
+        return requestError(userType === "guest"
+          ? "이미 이 연락처로 신청한 일정입니다. 명단을 다시 확인해주세요."
+          : `이미 신청된 이름(${finalName})입니다. 명단을 다시 확인해주세요.`);
+      }
+      throw insertError;
+    }
 
     attempts.delete(key);
     return NextResponse.json({ application }, { status: 201 });

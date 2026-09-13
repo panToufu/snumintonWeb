@@ -6,6 +6,7 @@ import FullCalendar from "@fullcalendar/react";
 import type { EventClickArg } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { useAppFeedback } from "@/components/AppFeedback";
 import type { AdminCalendarEvent, AttendanceEvent, AttendanceRanking, ClubApplication, ClubEvent, ClubMember } from "@/lib/club-types";
 
 async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -22,6 +23,7 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { showToast, askForConfirmation, feedbackUi } = useAppFeedback();
   
   // 🔥 'fees' 탭을 'submission' (제출 확인)으로 유지/확장
   const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "submission" | "monthly" | "members" | "register" | "special" | "executives">("daily"); 
@@ -159,62 +161,62 @@ export default function AdminDashboard() {
   const handleUpdateEvent = async () => {
     try {
       await adminRequest(`/api/admin/events/${editEventId}`, { method: "PATCH", body: JSON.stringify({ title: editTitle, location: editLocation, max_capacity: editCapacity, is_attendance_counted: editCountAttendance, participating_execs: editExecs, allow_guests: editAllowGuests }) });
-      alert("일정 정보가 성공적으로 수정되었습니다! ✅"); setIsEditModalOpen(false); fetchEvents();
-    } catch (error) { alert("수정 중 오류가 발생했습니다: " + (error as Error).message); }
+      showToast("일정 정보가 성공적으로 수정되었습니다! ✅", "success"); setIsEditModalOpen(false); fetchEvents();
+    } catch (error) { showToast("수정 중 오류가 발생했습니다: " + (error as Error).message, "error"); }
   };
 
   const handleDeleteEvent = async () => {
-    if (!confirm("정말 이 일정을 삭제하시겠습니까?\n(신청자 명단도 함께 모두 삭제됩니다!)")) return;
+    if (!await askForConfirmation("정말 이 일정을 삭제하시겠습니까?\n신청자 명단도 함께 모두 삭제됩니다.", "삭제")) return;
     try {
       await adminRequest(`/api/admin/events/${editEventId}`, { method: "DELETE" });
-      alert("일정이 삭제되었습니다. 🗑️"); setIsEditModalOpen(false); fetchEvents();
-    } catch (error) { alert("삭제 중 오류가 발생했습니다: " + (error as Error).message); }
+      showToast("일정이 삭제되었습니다. 🗑️", "success"); setIsEditModalOpen(false); fetchEvents();
+    } catch (error) { showToast("삭제 중 오류가 발생했습니다: " + (error as Error).message, "error"); }
   };
 
   const handleAddMembers = async () => {
-    if (!bulkMemberNames.trim()) return alert("이름을 입력해주세요.");
+    if (!bulkMemberNames.trim()) return showToast("이름을 입력해주세요.", "error");
     const namesArray = bulkMemberNames.split("\n").map(name => name.trim()).filter(name => name !== "");
-    if (namesArray.length === 0) return alert("유효한 이름이 없습니다.");
+    if (namesArray.length === 0) return showToast("유효한 이름이 없습니다.", "error");
     const payload = namesArray.map(name => ({ name: name, user_type: newMemberType }));
     try {
       await adminRequest("/api/admin/members", { method: "POST", body: JSON.stringify({ members: payload }) });
-      setBulkMemberNames(""); fetchMembers(); alert(`${namesArray.length}명 추가 완료!`);
-    } catch (error) { alert("오류: " + (error as Error).message); }
+      setBulkMemberNames(""); fetchMembers(); showToast(`${namesArray.length}명 추가 완료!`, "success");
+    } catch (error) { showToast("오류: " + (error as Error).message, "error"); }
   };
 
   const handleDeleteMember = async (id: string) => {
-    if (!confirm("정말 이 부원을 삭제하시겠습니까?")) return;
-    try { await adminRequest(`/api/admin/members/${id}`, { method: "DELETE" }); fetchMembers(); }
-    catch (error) { alert("삭제 오류: " + (error as Error).message); }
+    if (!await askForConfirmation("정말 이 부원을 삭제하시겠습니까?", "삭제")) return;
+    try { await adminRequest(`/api/admin/members/${id}`, { method: "DELETE" }); fetchMembers(); showToast("부원을 삭제했습니다.", "success"); }
+    catch (error) { showToast("삭제 오류: " + (error as Error).message, "error"); }
   };
 
   const handleAddExecutive = async () => {
-    if (!newExecName.trim()) return alert("임명할 부원의 이름을 입력해주세요.");
+    if (!newExecName.trim()) return showToast("임명할 부원의 이름을 입력해주세요.", "error");
     const searchName = newExecName.replace(/\s/g, '').toLowerCase();
     const matchedMember = members.find(m => m.name.replace(/\s/g, '').toLowerCase() === searchName);
-    if (!matchedMember) return alert("입력하신 이름이 전체 명단에 없습니다.");
-    if (['회장', '부회장', '임원진'].includes(matchedMember.user_type)) return alert(`이미 [${matchedMember.user_type}] 직책을 가지고 있는 부원입니다!`);
+    if (!matchedMember) return showToast("입력하신 이름이 전체 명단에 없습니다.", "error");
+    if (['회장', '부회장', '임원진'].includes(matchedMember.user_type)) return showToast(`이미 [${matchedMember.user_type}] 직책을 가지고 있는 부원입니다!`, "info");
 
     try {
       await adminRequest(`/api/admin/members/${matchedMember.id}`, { method: "PATCH", body: JSON.stringify({ user_type: newExecRole }) });
-      setNewExecName(""); setNewExecRole("임원진"); fetchMembers(); alert(`${matchedMember.name} 님이 ${newExecRole}(으)로 임명되었습니다! 🎉`);
-    } catch (error) { alert("오류: " + (error as Error).message); }
+      setNewExecName(""); setNewExecRole("임원진"); fetchMembers(); showToast(`${matchedMember.name} 님이 ${newExecRole}(으)로 임명되었습니다! 🎉`, "success");
+    } catch (error) { showToast("오류: " + (error as Error).message, "error"); }
   };
 
   const handleDeleteExecutive = async (id: string, name: string) => {
-    if (!confirm(`${name} 님을 임원진에서 해임하고 일반 부원으로 되돌리시겠습니까?`)) return;
-    try { await adminRequest(`/api/admin/members/${id}`, { method: "PATCH", body: JSON.stringify({ user_type: "member" }) }); fetchMembers(); }
-    catch (error) { alert("오류: " + (error as Error).message); }
+    if (!await askForConfirmation(`${name} 님을 임원진에서 해임하고 일반 부원으로 되돌리시겠습니까?`, "해임")) return;
+    try { await adminRequest(`/api/admin/members/${id}`, { method: "PATCH", body: JSON.stringify({ user_type: "member" }) }); fetchMembers(); showToast("임원진 권한을 해제했습니다.", "success"); }
+    catch (error) { showToast("오류: " + (error as Error).message, "error"); }
   };
 
   const updateAttendanceStatus = async (appId: string, status: string) => {
     try { await adminRequest(`/api/admin/applications/${appId}`, { method: "PATCH", body: JSON.stringify({ attendance_status: status }) }); if (selectedEventId) fetchApplicants(selectedEventId); }
-    catch (error) { alert("상태 업데이트 오류: " + (error as Error).message); }
+    catch (error) { showToast("상태 업데이트 오류: " + (error as Error).message, "error"); }
   };
 
   const togglePaymentStatus = async (appId: string, currentStatus: boolean) => {
     try { await adminRequest(`/api/admin/applications/${appId}`, { method: "PATCH", body: JSON.stringify({ is_paid: !currentStatus }) }); if (selectedEventId) fetchApplicants(selectedEventId); }
-    catch (error) { alert("제출 상태 업데이트 오류: " + (error as Error).message); }
+    catch (error) { showToast("제출 상태 업데이트 오류: " + (error as Error).message, "error"); }
   };
 
   const handleSaveAppEdit = async () => {
@@ -223,13 +225,14 @@ export default function AdminDashboard() {
       await adminRequest(`/api/admin/applications/${editAppTarget.id}`, { method: "PATCH", body: JSON.stringify({ participation_type: editAppTarget.participation_type, lesson_choice: editAppTarget.lesson_choice, afterparty_join: editAppTarget.afterparty_join, level: editAppTarget.level }) });
       setIsEditAppModalOpen(false);
       if (selectedEventId) fetchApplicants(selectedEventId);
-    } catch (error) { alert("수정 오류: " + (error as Error).message); }
+      showToast("신청 정보를 수정했습니다.", "success");
+    } catch (error) { showToast("수정 오류: " + (error as Error).message, "error"); }
   };
 
   const handleDeleteApplication = async (appId: string) => {
-    if (!confirm("이 신청 내역을 삭제하시겠습니까?")) return;
-    try { await adminRequest(`/api/admin/applications/${appId}`, { method: "DELETE" }); if (selectedEventId) fetchApplicants(selectedEventId); }
-    catch (error) { alert("삭제 오류: " + (error as Error).message); }
+    if (!await askForConfirmation("이 신청 내역을 삭제하시겠습니까?", "삭제")) return;
+    try { await adminRequest(`/api/admin/applications/${appId}`, { method: "DELETE" }); if (selectedEventId) fetchApplicants(selectedEventId); showToast("신청 내역을 삭제했습니다.", "success"); }
+    catch (error) { showToast("삭제 오류: " + (error as Error).message, "error"); }
   };
 
   const calculateRanking = useCallback(async () => {
@@ -240,7 +243,7 @@ export default function AdminDashboard() {
     const { events: eventsList, applications: apps } = await adminRequest<{ events: AttendanceEvent[]; applications: ClubApplication[] }>(`/api/admin/attendance-report?year=${currentYear}&month=${currentMonth}`);
     setMonthEventsList(eventsList);
     const eventIds = eventsList.map(e => e.id);
-    
+
     if (eventIds.length === 0) { setMonthlyRanking(activeMembers.map(m => ({ ...m, count: 0, attendanceRecord: {} }))); return; }
     
     const ranking = activeMembers.map(m => {
@@ -269,8 +272,8 @@ export default function AdminDashboard() {
   };
 
   const handleBulkRegister = async () => {
-    if (regDates.length === 0) return alert("선택된 날짜가 없습니다.");
-    if (!confirm(`총 ${regDates.length}개의 정기운동을 등록하시겠습니까?\n(기본 시간: 19:00 ~ 22:00)`)) return;
+    if (regDates.length === 0) return showToast("선택된 날짜가 없습니다.", "error");
+    if (!await askForConfirmation(`총 ${regDates.length}개의 정기운동을 등록하시겠습니까?\n기본 시간: 19:00 ~ 22:00`, "등록")) return;
     
     const payload = regDates.map(dateStr => {
       const startAt = new Date(`${dateStr}T19:00:00+09:00`).toISOString();
@@ -285,16 +288,16 @@ export default function AdminDashboard() {
     });
     try {
       await adminRequest("/api/admin/events", { method: "POST", body: JSON.stringify({ events: payload }) });
-      alert(`${regDates.length}개 등록 완료!`); fetchEvents(); setAdminTab("calendar");
-    } catch (error) { alert("등록 중 오류가 발생했습니다: " + (error as Error).message); }
+      showToast(`${regDates.length}개 등록 완료!`, "success"); fetchEvents(); setAdminTab("calendar");
+    } catch (error) { showToast("등록 중 오류가 발생했습니다: " + (error as Error).message, "error"); }
   };
 
   const handleRegisterSpecialEvent = async () => {
-    if (!spEventTitle.trim()) return alert("행사 제목을 입력해주세요.");
-    if (!spEventStartDate || !spEventEndDate) return alert("행사의 시작 시간과 종료 시간을 모두 설정해주세요.");
-    if (spEventAllowRegistration && !spEventRegistrationStart) return alert("참가 신청을 언제부터 받을지(신청 시작 시간) 설정해주세요.");
-    
-    if (!confirm(`'${spEventTitle}' 행사를 등록하시겠습니까?`)) return;
+    if (!spEventTitle.trim()) return showToast("행사 제목을 입력해주세요.", "error");
+    if (!spEventStartDate || !spEventEndDate) return showToast("행사의 시작 시간과 종료 시간을 모두 설정해주세요.", "error");
+    if (spEventAllowRegistration && !spEventRegistrationStart) return showToast("참가 신청을 언제부터 받을지(신청 시작 시간) 설정해주세요.", "error");
+
+    if (!await askForConfirmation(`'${spEventTitle}' 행사를 등록하시겠습니까?`, "등록")) return;
 
     const startAt = new Date(spEventStartDate).toISOString();
     const endAt = new Date(spEventEndDate).toISOString();
@@ -318,7 +321,7 @@ export default function AdminDashboard() {
     
     try {
       await adminRequest("/api/admin/events", { method: "POST", body: JSON.stringify({ events: [payload] }) });
-      alert(`행사 등록 완료! 🎉`); 
+      showToast("행사 등록 완료! 🎉", "success");
       setSpEventTitle("");
       setSpEventStartDate("");
       setSpEventEndDate("");
@@ -329,7 +332,7 @@ export default function AdminDashboard() {
       setSpEventAllowRegistration(true);
       fetchEvents(); 
       setAdminTab("calendar"); 
-    } catch (error) { alert("행사 등록 중 오류가 발생했습니다: " + (error as Error).message); }
+    } catch (error) { showToast("행사 등록 중 오류가 발생했습니다: " + (error as Error).message, "error"); }
   };
 
   const getCalendarCells = () => {
@@ -413,7 +416,7 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">출석 체크용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedEventId ? (
@@ -526,7 +529,7 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">제출 확인용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={(info) => { setSelectedEventId(info.event.id); setSelectedEventTitle(info.event.title); setSelectedEventDate(info.event.start); fetchApplicants(info.event.id); }} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
                 {!selectedEventId ? (
@@ -630,7 +633,7 @@ export default function AdminDashboard() {
                     <p className="text-xs md:text-sm text-slate-500 mt-1">달력에서 일정을 클릭하여 수정/삭제하세요.</p>
                   </div>
                 </div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={handleEventClickForEdit} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={events} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClick={handleEventClickForEdit} />
               </div>
             </div>
           )}
@@ -962,6 +965,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {feedbackUi}
       </div>
     </div>
   );

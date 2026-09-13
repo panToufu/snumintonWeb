@@ -5,7 +5,9 @@ import Image from "next/image";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { useAppFeedback } from "@/components/AppFeedback";
 import type { AttendanceEvent, AttendanceRanking, CalendarEvent, ClubApplication, ClubEvent, ClubMember, ClubPoll, SelectedClubEvent } from "@/lib/club-types";
+import { getRegistrationStart } from "@/lib/registration-time";
 
 async function publicRequest<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, {
@@ -165,6 +167,7 @@ const dict = {
 export default function Home() {
   const [lang, setLang] = useState<"ko" | "en">("ko");
   const t = dict[lang]; 
+  const { showToast, feedbackUi } = useAppFeedback();
 
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [polls, setPolls] = useState<ClubPoll[]>([]);
@@ -331,22 +334,11 @@ export default function Home() {
       };
     }
 
-    // 오픈 시간 로직
-    let openTime;
-    if (selectedEvent.registration_start_at) {
-      openTime = new Date(selectedEvent.registration_start_at);
-    } else {
-      const eventStart = new Date(selectedEvent.start || selectedEvent.start_at);
-      openTime = new Date(eventStart);
-      if (userType === "member" || userType === "ob") {
-        openTime.setDate(openTime.getDate() - 2); openTime.setHours(23, 0, 0, 0);
-      } else {
-        openTime.setDate(openTime.getDate() - 1); openTime.setHours(15, 0, 0, 0);
-      }
-    }
+    const openTime = getRegistrationStart(selectedEvent, userType);
+    if (!openTime) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
 
     const isOpen = now.getTime() >= openTime.getTime();
-    const timeFormatOptions: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" };
+    const timeFormatOptions: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", timeZone: "Asia/Seoul" };
     const timeString = openTime.toLocaleString(lang === "ko" ? "ko-KR" : "en-US", timeFormatOptions);
     
     return {
@@ -363,33 +355,33 @@ export default function Home() {
   };
 
   const handleAttendanceAuth = async () => {
-    if (!attendanceAuthName) return alert(t.alertName);
+    if (!attendanceAuthName) return showToast(t.alertName, "error");
     try {
       const { valid } = await publicRequest<{ valid: boolean }>("/api/public/members/verify", {
         method: "POST",
         body: JSON.stringify({ name: attendanceAuthName }),
       });
-      if (!valid) return alert(t.alertNotRegistered);
+      if (!valid) return showToast(t.alertNotRegistered, "error");
 
       setIsAttendanceAuthenticated(true);
       setIsAttendanceAuthOpen(false);
       setAttendanceAuthName("");
       setIsRankingModalOpen(true);
     } catch (error) {
-      alert(t.alertError + (error instanceof Error ? error.message : ""));
+      showToast(t.alertError + (error instanceof Error ? error.message : ""), "error");
     }
   };
 
   const handleApplyClick = () => {
     if (isSubmitting) return; 
-    if (!userName) return alert(t.alertName);
-    if (userType === "guest" && !phoneNum.trim()) return alert(t.alertPhone);
-    if (selectedEvent?.ask_level && !userLevel) return alert(t.levelAlert); 
+    if (!userName) return showToast(t.alertName, "error");
+    if (userType === "guest" && !phoneNum.trim()) return showToast(t.alertPhone, "error");
+    if (selectedEvent?.ask_level && !userLevel) return showToast(t.levelAlert, "error");
     
     // 상태에 따른 알럿 분기 처리 (마감되었는지, 대기중인지)
     if (status.disabled) {
-      if (status.text === t.closed) return alert(t.closed);
-      return alert(status.text + " " + t.alertWait);
+      if (status.text === t.closed) return showToast(t.closed, "error");
+      return showToast(status.text + " " + t.alertWait, "info");
     }
 
     if (userType === "guest") {
@@ -422,14 +414,14 @@ export default function Home() {
         }),
       });
 
-      alert(`${application.user_name}${t.alertSuccess}`);
+      showToast(`${application.user_name}${t.alertSuccess}`, "success");
       setIsGuestPaymentModalOpen(false);
       setUserName(""); setGuestPw(""); setPhoneNum(""); setParticipationType("full");
       setLessonChoice("tue_thu"); setAfterpartyJoin(false); setUserLevel("");
       setGuestSource("인스타"); setGuestReferrer("");
       fetchApplicants(selectedEvent.id); setActiveTab("list");
     } catch (error) {
-      alert(t.alertError + (error instanceof Error ? error.message : ""));
+      showToast(t.alertError + (error instanceof Error ? error.message : ""), "error");
     } finally {
       setIsSubmitting(false); 
     }
@@ -507,6 +499,7 @@ export default function Home() {
           plugins={[dayGridPlugin, interactionPlugin]} 
           initialView="dayGridMonth" 
           events={events} 
+          timeZone="Asia/Seoul"
           height="auto" 
           locale={lang === "ko" ? "ko" : "en"} 
           displayEventTime={true} 
@@ -897,9 +890,13 @@ export default function Home() {
               <p className="leading-relaxed mb-4">{t.guestPaymentDesc}</p>
               
               <button 
-                onClick={() => {
-                  navigator.clipboard.writeText("1234-56-7890123"); 
-                  alert("계좌번호가 복사되었습니다! 📋");
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText("3333365925467");
+                    showToast("계좌번호가 복사되었습니다! 📋", "success");
+                  } catch {
+                    showToast("계좌번호를 복사하지 못했습니다.", "error");
+                  }
                 }}
                 className="w-full flex items-center justify-between font-black text-slate-800 bg-slate-100 hover:bg-slate-200 px-4 py-3 rounded-xl transition-all active:scale-95 group"
                 title="클릭해서 복사하기"
@@ -920,6 +917,8 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {feedbackUi}
 
       <footer className="mt-auto pt-16 pb-8 text-center text-[10px] md:text-xs text-slate-400 font-medium">
         <p>© 2026 SNUMINTON. | Developed by 이주원</p>
