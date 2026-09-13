@@ -40,7 +40,7 @@ export default function AdminDashboard() {
   const [newExecRole, setNewExecRole] = useState("임원진");
 
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
-  const [currentYear] = useState(new Date().getFullYear());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   
   const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
@@ -257,6 +257,12 @@ export default function AdminDashboard() {
     ranking.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     setMonthlyRanking(ranking);
   }, [currentMonth, currentYear, members]);
+
+  const moveCurrentMonth = (direction: -1 | 1) => {
+    const nextDate = new Date(currentYear, currentMonth - 1 + direction, 1);
+    setCurrentYear(nextDate.getFullYear());
+    setCurrentMonth(nextDate.getMonth() + 1);
+  };
 
   const toggleRegDate = (dateStr: string) => {
     setRegDates(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
@@ -633,9 +639,9 @@ export default function AdminDashboard() {
             <div className="w-full p-3 md:p-8 overflow-y-auto bg-slate-50 custom-scrollbar">
               <div className="max-w-full mx-auto">
                 <div className="flex items-center justify-between mb-4 md:mb-6 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100">
-                  <button onClick={() => setCurrentMonth(prev => prev === 1 ? 12 : prev - 1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">◀</button>
+                  <button onClick={() => moveCurrentMonth(-1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">◀</button>
                   <div className="text-center"><h2 className="text-lg md:text-2xl font-black text-slate-800">{currentYear}년 {currentMonth}월 상세 출석부</h2></div>
-                  <button onClick={() => setCurrentMonth(prev => prev === 12 ? 1 : prev + 1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">▶</button>
+                  <button onClick={() => moveCurrentMonth(1)} className="p-1 md:p-2 hover:bg-slate-100 rounded-lg font-bold text-sm md:text-base">▶</button>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-x-auto custom-scrollbar">
                   <table className="w-full text-xs md:text-sm text-center min-w-max border-collapse">

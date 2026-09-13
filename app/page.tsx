@@ -187,7 +187,7 @@ export default function Home() {
 
   const [isRankingModalOpen, setIsRankingModalOpen] = useState(false);
   const [rankingMonth, setRankingMonth] = useState(new Date().getMonth() + 1);
-  const [rankingYear] = useState(new Date().getFullYear());
+  const [rankingYear, setRankingYear] = useState(new Date().getFullYear());
   const [monthlyRanking, setMonthlyRanking] = useState<AttendanceRanking[]>([]);
   const [monthEventsList, setMonthEventsList] = useState<AttendanceEvent[]>([]);
 
@@ -297,6 +297,12 @@ export default function Home() {
       setMonthEventsList([]);
     }
   }, [rankingMonth, rankingYear]);
+
+  const moveRankingMonth = (direction: -1 | 1) => {
+    const nextDate = new Date(rankingYear, rankingMonth - 1 + direction, 1);
+    setRankingYear(nextDate.getFullYear());
+    setRankingMonth(nextDate.getMonth() + 1);
+  };
 
   useEffect(() => {
     if (isRankingModalOpen) void fetchRanking();
@@ -604,9 +610,9 @@ export default function Home() {
           <div className="bg-white w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="bg-slate-900 text-white p-5 md:p-6 flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
-                <button onClick={() => setRankingMonth(prev => prev === 1 ? 12 : prev - 1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">◀</button>
+                <button onClick={() => moveRankingMonth(-1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">◀</button>
                 <h2 className="text-xl font-black tracking-tight">{rankingYear}. {String(rankingMonth).padStart(2, '0')} {t.attendanceTitle}</h2>
-                <button onClick={() => setRankingMonth(prev => prev === 12 ? 1 : prev + 1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">▶</button>
+                <button onClick={() => moveRankingMonth(1)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 transition-colors font-bold">▶</button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto overflow-x-auto bg-slate-50 p-0 custom-scrollbar">
