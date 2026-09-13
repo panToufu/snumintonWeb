@@ -43,7 +43,7 @@ function HalfHourDateTimePicker({ label, date, hour, minute, onDateChange, onHou
   return (
     <div>
       <label className="block text-xs font-bold text-slate-500 mb-2">{label}</label>
-      <div className="grid grid-cols-1 sm:grid-cols-[1.5fr_1fr_1fr] gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_96px_96px] gap-2">
         <input type="date" value={date} onChange={(event) => onDateChange(event.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" aria-label={`${label} 날짜`} />
         <select value={hour} onChange={(event) => onHourChange(event.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-pink-400 font-bold text-sm transition-colors" aria-label={`${label} 시`}>
           {hourOptions.map((option) => <option key={option} value={option}>{option}시</option>)}
@@ -484,8 +484,9 @@ export default function AdminDashboard() {
       <style dangerouslySetInnerHTML={{__html: `
         .fc .fc-toolbar-title { font-size: 1.1rem !important; font-weight: 900; }
         .fc .fc-button { padding: 0.3em 0.6em; font-size: 0.8rem; }
-        .fc .attendance-selected-day { background: #eff6ff !important; box-shadow: inset 0 0 0 2px #60a5fa; }
-        .fc .attendance-selected-event { box-shadow: 0 0 0 3px #1d4ed8, 0 4px 10px rgba(29, 78, 216, 0.3) !important; font-weight: 900 !important; position: relative; z-index: 3; }
+        .fc .attendance-selected-day { background: #eff6ff !important; }
+        .fc .attendance-selected-day .fc-daygrid-day-number { color: #2563eb; font-weight: 800; }
+        .fc .attendance-selected-event { box-shadow: 0 3px 8px rgba(37, 99, 235, 0.22) !important; filter: saturate(1.2); font-weight: 900 !important; transform: translateY(-1px); position: relative; z-index: 3; }
         @media (max-width: 768px) {
           .fc .fc-event { padding: 1px; margin-bottom: 1px !important; }
           .fc .fc-event-title { font-size: 0.6rem !important; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -502,10 +503,10 @@ export default function AdminDashboard() {
               <p className="text-slate-300 text-xs md:text-sm mt-1">동아리 일정 및 출석 관리</p>
             </div>
             <div className="flex gap-2">
+              <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-xs md:text-sm font-bold transition-colors border border-slate-700">로그아웃</button>
               <button onClick={() => router.push('/')} className="px-3 py-2 md:px-5 md:py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-xs md:text-sm font-bold transition-colors flex items-center gap-2 border border-slate-700">
                 🏠 <span className="hidden md:inline">메인 홈으로</span>
               </button>
-              <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-xs md:text-sm font-bold transition-colors border border-slate-700">로그아웃</button>
             </div>
           </div>
           
@@ -945,7 +946,7 @@ export default function AdminDashboard() {
                   )}
                   {spEventType === "lightning" && <p className="rounded-xl bg-amber-50 border border-amber-100 p-4 text-sm text-amber-800 font-medium">번개운동은 시간과 장소만 등록하며, 정원·참가 신청·출석 관리는 사용하지 않습니다.</p>}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <HalfHourDateTimePicker label="⏰ 시작 날짜 및 시간" date={spEventStartDay} hour={spEventStartHour} minute={spEventStartMinute} onDateChange={setSpEventStartDay} onHourChange={setSpEventStartHour} onMinuteChange={setSpEventStartMinute} />
                     <HalfHourDateTimePicker label="⏰ 종료 날짜 및 시간" date={spEventEndDay} hour={spEventEndHour} minute={spEventEndMinute} onDateChange={setSpEventEndDay} onHourChange={setSpEventEndHour} onMinuteChange={setSpEventEndMinute} />
                   </div>
