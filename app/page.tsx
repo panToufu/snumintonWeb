@@ -26,7 +26,13 @@ const firstDayOfCurrentKoreaMonth = () => `${koreaDateInputValue().slice(0, 7)}-
 
 const dict = {
   ko: {
-    ongoing: "📌 진행 중인 투표 및 행사",
+    ongoing: "📌 일정 및 투표",
+    openRegistration: "신청 가능한 행사",
+    upcomingEvents: "다가오는 일정",
+    activePolls: "진행 중인 투표",
+    pastEvents: "지난 일정",
+    showPastEvents: "지난 일정 보기",
+    hidePastEvents: "지난 일정 접기",
     lesson: "정기 레슨",
     special: "행사",
     lightning: "번개운동",
@@ -103,7 +109,13 @@ const dict = {
     levelAlert: "실력(레벨)을 선택하셔야 신청이 가능합니다!" 
   },
   en: {
-    ongoing: "📌 Ongoing Polls & Events",
+    ongoing: "📌 Events & Polls",
+    openRegistration: "Open for Registration",
+    upcomingEvents: "Upcoming Events",
+    activePolls: "Active Polls",
+    pastEvents: "Past Events",
+    showPastEvents: "Show Past Events",
+    hidePastEvents: "Hide Past Events",
     lesson: "Regular Lesson",
     special: "Event",
     lightning: "Lightning Workout",
@@ -221,6 +233,7 @@ export default function Home() {
 
   const [executives, setExecutives] = useState<ClubMember[]>([]);
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
+  const [isPastEventsOpen, setIsPastEventsOpen] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -238,6 +251,11 @@ export default function Home() {
       return () => clearInterval(timer);
     }
   }, [isModalOpen]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const isAnyModalOpen = isModalOpen || isRankingModalOpen || isAttendanceAuthOpen || isGuestPaymentModalOpen;
@@ -483,45 +501,51 @@ export default function Home() {
     setGuestReferrer("");
   };
 
-  const specialEvents = events.filter(ev => ev.extendedProps?.type !== 'normal' && ev.extendedProps?.allow_registration !== false);
-  
-  type UnifiedListItem =
-    | { type: "event"; data: CalendarEvent; id: string }
-    | { type: "poll"; data: ClubPoll; id: string };
+  const getEventEndTime = (event: CalendarEvent) => {
+    if (event.end) return new Date(event.end).getTime();
+    if (event.extendedProps?.end_at) return new Date(event.extendedProps.end_at).getTime();
+    return new Date(event.start).getTime() + (3 * 60 * 60 * 1000);
+  };
+  const sortByStartTime = (first: CalendarEvent, second: CalendarEvent) => new Date(first.start).getTime() - new Date(second.start).getTime();
+  const nowTime = trueCurrentTime.getTime();
+  const listedEvents = events.filter((event) => event.extendedProps?.type !== "normal");
+  const isRegistrationOpen = (event: CalendarEvent) => {
+    if (event.extendedProps?.allow_registration === false || nowTime > getEventEndTime(event)) return false;
+    const registrationStart = getRegistrationStart(event.extendedProps, "member");
+    return Boolean(registrationStart && nowTime >= registrationStart.getTime());
+  };
+  const openRegistrationEvents = listedEvents.filter(isRegistrationOpen).sort(sortByStartTime);
+  const upcomingEvents = listedEvents.filter((event) => !isRegistrationOpen(event) && new Date(event.start).getTime() >= nowTime).sort(sortByStartTime);
+  const pastEvents = listedEvents.filter((event) => getEventEndTime(event) < nowTime).sort((first, second) => sortByStartTime(second, first));
+  const activePolls = polls.filter((poll) => !poll.deadline || new Date(poll.deadline).getTime() >= nowTime);
+  const hasVisibleItems = openRegistrationEvents.length > 0 || upcomingEvents.length > 0 || activePolls.length > 0 || pastEvents.length > 0;
 
-  const unifiedList: UnifiedListItem[] = [
-    ...specialEvents.map((event): UnifiedListItem => ({ type: "event", data: event, id: `event-${event.id}` })),
-    ...polls.map((poll): UnifiedListItem => ({ type: "poll", data: poll, id: `poll-${poll.id}` }))
-  ].sort((a, b) => {
-    // 캘린더 라이브러리 누락 방지용 3중 체크
-    const getEventEnd = (ev: CalendarEvent) => {
-      if (ev.end) return new Date(ev.end).getTime();
-      if (ev.extendedProps?.end_at) return new Date(ev.extendedProps.end_at).getTime();
-      return new Date(ev.start).getTime() + (3 * 60 * 60 * 1000);
-    };
+  const openEventModal = (event: CalendarEvent) => {
+    setSelectedEvent({ ...event.extendedProps, id: event.id, title: event.title, start: event.extendedProps.start_at || event.start, end: event.extendedProps.end_at || event.end || null } as SelectedClubEvent);
+    void fetchApplicants(event.id);
+    setActiveTab("info");
+    setUserType("member");
+    setIsModalOpen(true);
+  };
 
-    const isAClosed = a.type === 'event' 
-      ? (trueCurrentTime.getTime() > getEventEnd(a.data))
-      : (a.data.deadline && trueCurrentTime.getTime() > new Date(a.data.deadline).getTime());
-    
-    const isBClosed = b.type === 'event' 
-      ? (trueCurrentTime.getTime() > getEventEnd(b.data))
-      : (b.data.deadline && trueCurrentTime.getTime() > new Date(b.data.deadline).getTime());
-
-    if (isAClosed !== isBClosed) return isAClosed ? 1 : -1;
-
-    const dateA = a.type === 'event' 
-      ? new Date(a.data.start).getTime() 
-      : (a.data.deadline ? new Date(a.data.deadline).getTime() : new Date(a.data.created_at).getTime());
-    
-    const dateB = b.type === 'event' 
-      ? new Date(b.data.start).getTime() 
-      : (b.data.deadline ? new Date(b.data.deadline).getTime() : new Date(b.data.created_at).getTime());
-
-    return dateA - dateB;
-  });
-
-  const hasOngoingItems = unifiedList.length > 0;
+  const renderEventCard = (event: CalendarEvent, isPast = false, isFeatured = false) => {
+    const canApply = event.extendedProps.allow_registration !== false;
+    return (
+      <div key={event.id} className={`bg-white p-5 rounded-2xl shadow-sm border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPast ? "opacity-60 border-slate-100" : isFeatured ? "border-blue-200 shadow-blue-100 hover:shadow-md" : "border-slate-100 hover:shadow-md"}`}>
+        <div>
+          <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${event.extendedProps.type === "lesson" ? "bg-blue-100 text-blue-600" : event.extendedProps.type === "lightning" ? "bg-amber-100 text-amber-600" : "bg-pink-100 text-pink-600"}`}>{event.extendedProps.type === "lesson" ? t.lesson : event.extendedProps.type === "lightning" ? t.lightning : t.special}</span>
+          <h3 className="font-bold text-slate-900 text-base">{event.title}</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {t.date} {new Date(event.start).toLocaleDateString(lang === "ko" ? "ko-KR" : "en-US", { month: "long", day: "numeric", weekday: "short" })} {new Date(event.start).toLocaleTimeString(lang === "ko" ? "ko-KR" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}
+            {event.end && ` ~ ${new Date(event.end).toLocaleTimeString(lang === "ko" ? "ko-KR" : "en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`}
+          </p>
+        </div>
+        <button onClick={() => openEventModal(event)} className={`w-full md:w-auto px-6 py-2.5 font-bold text-sm rounded-xl transition-colors mt-2 md:mt-0 ${isPast ? "bg-slate-100 text-slate-500 hover:bg-slate-200" : canApply ? "bg-slate-900 text-white hover:bg-slate-800" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+          {isPast ? t.closed : canApply ? t.applyView : t.infoTab}
+        </button>
+      </div>
+    );
+  };
 
   return (
     <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative flex flex-col">
@@ -568,57 +592,57 @@ export default function Home() {
 
       <div className="mt-16 mb-8 max-w-5xl mx-auto px-2 md:px-0 w-full flex-1 flex flex-col">
         <div className="flex items-center justify-between mb-4 px-1"><h2 className="text-lg font-black text-slate-800">{t.ongoing}</h2></div>
-        
-        <div className="flex flex-col gap-3 min-h-[250px]">
-          {hasOngoingItems ? (
-            unifiedList.map((item) => {
-              if (item.type === 'event') {
-                const ev = item.data;
-                const eventEndTime = ev.end ? new Date(ev.end).getTime() : (ev.extendedProps?.end_at ? new Date(ev.extendedProps.end_at).getTime() : new Date(ev.start).getTime() + 3*60*60*1000);
-                const isClosed = trueCurrentTime.getTime() > eventEndTime;
-                
-                return (
-                  <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
-                    <div>
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md mb-2 inline-block ${ev.extendedProps.type === 'lesson' ? 'bg-blue-100 text-blue-600' : ev.extendedProps.type === 'lightning' ? 'bg-amber-100 text-amber-600' : 'bg-pink-100 text-pink-600'}`}>{ev.extendedProps.type === 'lesson' ? t.lesson : ev.extendedProps.type === 'lightning' ? t.lightning : t.special}</span>
-                      <h3 className="font-bold text-slate-900 text-base">{ev.title}</h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {t.date} {new Date(ev.start).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', { month: 'long', day: 'numeric', weekday: 'short' })} {new Date(ev.start).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                        {ev.end && ` ~ ${new Date(ev.end).toLocaleTimeString(lang === 'ko' ? 'ko-KR' : 'en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => { setSelectedEvent({ ...ev.extendedProps, id: ev.id, title: ev.title, start: ev.extendedProps.start_at || ev.start, end: ev.extendedProps.end_at || ev.end || null } as SelectedClubEvent); fetchApplicants(ev.id); setActiveTab("info"); setUserType("member"); setIsModalOpen(true); }}
-                      className={`w-full md:w-auto px-6 py-2.5 font-bold text-sm rounded-xl transition-colors mt-2 md:mt-0 ${isClosed ? 'bg-slate-200 text-slate-500 hover:bg-slate-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
-                    >
-                      {isClosed ? t.closed : t.applyView}
-                    </button>
+        <div className="flex flex-col gap-8 min-h-[250px]">
+          {hasVisibleItems ? (
+            <>
+              {openRegistrationEvents.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 px-1"><h3 className="font-black text-blue-700">✨ {t.openRegistration}</h3><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700">{openRegistrationEvents.length}</span></div>
+                  <div className="flex flex-col gap-3">{openRegistrationEvents.map((event) => renderEventCard(event, false, true))}</div>
+                </section>
+              )}
+
+              {upcomingEvents.length > 0 && (
+                <section className="space-y-3">
+                  <h3 className="font-black text-slate-700 px-1">📅 {t.upcomingEvents}</h3>
+                  <div className="flex flex-col gap-3">{upcomingEvents.map((event) => renderEventCard(event))}</div>
+                </section>
+              )}
+
+              {activePolls.length > 0 && (
+                <section className="space-y-3">
+                  <h3 className="font-black text-slate-700 px-1">🗳️ {t.activePolls}</h3>
+                  <div className="flex flex-col gap-3">
+                    {activePolls.map((poll) => (
+                      <div key={poll.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition-all">
+                        <div>
+                          <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === "text" ? t.suggestion : t.poll}</span>
+                          <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
+                          {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === "ko" ? "ko-KR" : "en-US")}</p>}
+                        </div>
+                        <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
+                          {poll.poll_type === "text" ? (
+                            <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
+                          ) : (
+                            <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                );
-              } else {
-                const poll = item.data;
-                const isPollClosed = poll.deadline && trueCurrentTime.getTime() > new Date(poll.deadline).getTime();
-                
-                return (
-                  <div key={item.id} className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isPollClosed ? 'opacity-60 grayscale-[30%]' : 'hover:shadow-md'}`}>
-                    <div>
-                      <span className="text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-1 rounded-md mb-2 inline-block">{poll.poll_type === 'text' ? t.suggestion : t.poll}</span>
-                      <h3 className="font-bold text-slate-900 text-base">{poll.title}</h3>
-                      {poll.deadline && <p className="text-xs text-slate-500 mt-1">{t.deadline} {new Date(poll.deadline).toLocaleString(lang === 'ko' ? 'ko-KR' : 'en-US')}</p>}
-                    </div>
-                    <div className="w-full md:w-auto flex gap-2 mt-2 md:mt-0">
-                      {isPollClosed ? (
-                        <span className="px-4 py-2 bg-slate-100 text-slate-400 font-bold text-sm rounded-xl w-full md:w-auto text-center">{t.closed}</span>
-                      ) : poll.poll_type === 'text' ? (
-                        <><input type="text" placeholder={t.enterText} className="flex-1 md:w-64 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-purple-300" /><button className="px-4 py-2 bg-purple-600 text-white font-bold text-sm rounded-xl hover:bg-purple-700">{t.submit}</button></>
-                      ) : (
-                        <><button className="flex-1 md:flex-none px-6 py-2.5 bg-blue-50 text-blue-600 font-bold text-sm rounded-xl hover:bg-blue-100">{t.attend}</button><button className="flex-1 md:flex-none px-6 py-2.5 bg-slate-50 text-slate-500 font-bold text-sm rounded-xl hover:bg-slate-100">{t.absent}</button></>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-            })
+                </section>
+              )}
+
+              {pastEvents.length > 0 && (
+                <section className="border-t border-slate-200 pt-5">
+                  <button type="button" onClick={() => setIsPastEventsOpen((open) => !open)} className="w-full flex items-center justify-between px-1 text-left text-slate-500 hover:text-slate-800 transition-colors">
+                    <span className="font-bold">🗂️ {isPastEventsOpen ? t.hidePastEvents : t.showPastEvents} <span className="ml-1 text-xs text-slate-400">({pastEvents.length})</span></span>
+                    <span className="text-sm">{isPastEventsOpen ? "▲" : "▼"}</span>
+                  </button>
+                  {isPastEventsOpen && <div className="mt-3 flex flex-col gap-3">{pastEvents.map((event) => renderEventCard(event, true))}</div>}
+                </section>
+              )}
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center flex-1 border-2 border-dashed border-slate-200 rounded-3xl text-slate-400 bg-slate-50/50 py-12">
               <span className="text-2xl mb-3 opacity-60">🍃</span>
