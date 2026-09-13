@@ -36,6 +36,8 @@ export default function AdminDashboard() {
   
   const [members, setMembers] = useState<ClubMember[]>([]);
   const [bulkMemberNames, setBulkMemberNames] = useState("");
+  const [newMemberType, setNewMemberType] = useState<"member" | "ob">("member");
+  const [memberDirectoryTab, setMemberDirectoryTab] = useState<"member" | "ob">("member");
 
   const [newExecName, setNewExecName] = useState(""); 
   const [newExecRole, setNewExecRole] = useState("임원진");
@@ -82,6 +84,8 @@ export default function AdminDashboard() {
     });
 
   const clubMembers = members.filter(m => m.user_type !== 'ob');
+  const obMembers = members.filter(m => m.user_type === 'ob');
+  const displayedMembers = memberDirectoryTab === "member" ? clubMembers : obMembers;
 
   useEffect(() => {
     fetchEvents();
@@ -178,7 +182,7 @@ export default function AdminDashboard() {
     if (!bulkMemberNames.trim()) return showToast("이름을 입력해주세요.", "error");
     const namesArray = bulkMemberNames.split("\n").map(name => name.trim()).filter(name => name !== "");
     if (namesArray.length === 0) return showToast("유효한 이름이 없습니다.", "error");
-    const payload = namesArray.map(name => ({ name: name, user_type: "member" }));
+    const payload = namesArray.map(name => ({ name: name, user_type: newMemberType }));
     try {
       await adminRequest("/api/admin/members", { method: "POST", body: JSON.stringify({ members: payload }) });
       setBulkMemberNames(""); fetchMembers(); showToast(`${namesArray.length}명 추가 완료!`, "success");
@@ -186,8 +190,8 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteMember = async (id: string) => {
-    if (!await askForConfirmation("정말 이 부원을 삭제하시겠습니까?", "삭제")) return;
-    try { await adminRequest(`/api/admin/members/${id}`, { method: "DELETE" }); fetchMembers(); showToast("부원을 삭제했습니다.", "success"); }
+    if (!await askForConfirmation("정말 이 회원을 삭제하시겠습니까?", "삭제")) return;
+    try { await adminRequest(`/api/admin/members/${id}`, { method: "DELETE" }); fetchMembers(); showToast("명단에서 삭제했습니다.", "success"); }
     catch (error) { showToast("삭제 오류: " + (error as Error).message, "error"); }
   };
 
@@ -681,16 +685,26 @@ export default function AdminDashboard() {
             <div className="w-full p-4 md:p-10 overflow-y-auto bg-slate-50 custom-scrollbar">
               <div className="max-w-3xl mx-auto">
                 <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col gap-3">
-                  <h3 className="font-black text-slate-800 text-base md:text-lg">새 부원 일괄 추가</h3>
+                  <h3 className="font-black text-slate-800 text-base md:text-lg">새 회원 일괄 추가</h3>
                   <textarea value={bulkMemberNames} onChange={(e) => setBulkMemberNames(e.target.value)} placeholder="엑셀 복붙..." className="w-full px-4 py-3 border-2 border-slate-100 rounded-xl outline-none text-sm" />
-                  <div className="flex justify-end items-center mt-2">
+                  <div className="flex gap-2 justify-end items-center mt-2">
+                    <select value={newMemberType} onChange={(e) => setNewMemberType(e.target.value as "member" | "ob")} className="px-3 py-2 border rounded-xl text-sm font-bold" aria-label="등록할 회원 역할">
+                      <option value="member">부원</option>
+                      <option value="ob">OB</option>
+                    </select>
                     <button onClick={handleAddMembers} className="px-4 py-2 bg-emerald-500 text-white font-black rounded-xl hover:bg-emerald-600 text-sm">등록</button>
                   </div>
                 </div>
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                  <div className="p-4 bg-slate-100 font-bold text-slate-600 text-sm flex justify-between"><span>부원 명단 ({clubMembers.length}명)</span><span className="text-xs text-slate-400 font-normal">※ 임원진은 뱃지로 함께 표시됩니다.</span></div>
+                  <div className="p-4 bg-slate-100 font-bold text-slate-600 text-sm flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2" role="tablist" aria-label="회원 명단 분류">
+                      <button type="button" role="tab" aria-selected={memberDirectoryTab === "member"} onClick={() => setMemberDirectoryTab("member")} className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${memberDirectoryTab === "member" ? "bg-emerald-600 text-white" : "bg-white text-slate-500 hover:bg-slate-200"}`}>부원 ({clubMembers.length})</button>
+                      <button type="button" role="tab" aria-selected={memberDirectoryTab === "ob"} onClick={() => setMemberDirectoryTab("ob")} className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${memberDirectoryTab === "ob" ? "bg-purple-600 text-white" : "bg-white text-slate-500 hover:bg-slate-200"}`}>OB ({obMembers.length})</button>
+                    </div>
+                    <span className="text-xs text-slate-400 font-normal">{memberDirectoryTab === "member" ? "※ 임원진은 부원 명단에 뱃지로 함께 표시됩니다." : "※ OB는 정원과 월별 출석 집계에서 제외됩니다."}</span>
+                  </div>
                   <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto custom-scrollbar">
-                    {clubMembers.map(m => (
+                    {displayedMembers.length === 0 ? <div className="p-8 text-center text-sm text-slate-400">등록된 {memberDirectoryTab === "member" ? "부원" : "OB"}이 없습니다.</div> : displayedMembers.map(m => (
                       <div key={m.id} className="flex justify-between items-center p-3 hover:bg-slate-50 transition-colors">
                         <div className="flex items-center gap-3"><span className="font-bold text-sm text-slate-800">{m.name}</span>{getRoleBadge(m.user_type)}</div>
                         <button onClick={() => handleDeleteMember(m.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1 transition-colors">삭제</button>
