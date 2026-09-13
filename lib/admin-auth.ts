@@ -61,16 +61,6 @@ export async function createAdminSession() {
   });
 }
 
-export async function clearAdminSession() {
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: 0,
-  });
-}
 
 export async function hasAdminSession() {
   const config = getConfig();

@@ -453,12 +453,6 @@ export default function AdminDashboard() {
     if (adminTab === "monthly") void calculateRanking();
   }, [adminTab, calculateRanking]);
 
-  const handleLogout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" });
-    router.replace("/");
-    router.refresh();
-  };
-
   const currentSelectedEventObj = events.find(e => e.id === selectedEventId);
   const attendanceEvents = events.filter(isAttendanceManagedEvent);
   const selectedAttendanceEvent = currentSelectedEventObj && isAttendanceManagedEvent(currentSelectedEventObj) ? currentSelectedEventObj : null;
@@ -503,7 +497,6 @@ export default function AdminDashboard() {
               <p className="text-slate-300 text-xs md:text-sm mt-1">동아리 일정 및 출석 관리</p>
             </div>
             <div className="flex gap-2">
-              <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-xs md:text-sm font-bold transition-colors border border-slate-700">로그아웃</button>
               <button onClick={() => router.push('/')} className="px-3 py-2 md:px-5 md:py-2.5 bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 rounded-xl text-xs md:text-sm font-bold transition-colors flex items-center gap-2 border border-slate-700">
                 🏠 <span className="hidden md:inline">메인 홈으로</span>
               </button>
