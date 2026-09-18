@@ -39,6 +39,22 @@ type HalfHourDateTimePickerProps = {
   onMinuteChange: (value: string) => void;
 };
 
+type AdminSiteSettings = {
+  bankName: string;
+  bankAccount: string;
+  accountHolder: string;
+  adminPasswordManagedHere: boolean;
+  guestPasswordManagedHere: boolean;
+};
+
+const defaultSiteSettings: AdminSiteSettings = {
+  bankName: "카카오뱅크",
+  bankAccount: "3333335748122",
+  accountHolder: "김민성",
+  adminPasswordManagedHere: false,
+  guestPasswordManagedHere: false,
+};
+
 function HalfHourDateTimePicker({ label, date, hour, minute, onDateChange, onHourChange, onMinuteChange }: HalfHourDateTimePickerProps) {
   return (
     <div>
@@ -62,7 +78,7 @@ export default function AdminDashboard() {
   const { showToast, askForConfirmation, feedbackUi } = useAppFeedback();
   
   // 🔥 'fees' 탭을 'submission' (제출 확인)으로 유지/확장
-  const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "submission" | "monthly" | "members" | "register" | "special" | "executives">("daily"); 
+  const [adminTab, setAdminTab] = useState<"calendar" | "daily" | "submission" | "monthly" | "members" | "register" | "special" | "executives" | "settings">("daily");
   
   const [events, setEvents] = useState<AdminCalendarEvent[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -94,6 +110,13 @@ export default function AdminDashboard() {
   const [regLocation, setRegLocation] = useState("구체");
   const [regCapacity, setRegCapacity] = useState(50);
   const [regAllowGuests, setRegAllowGuests] = useState(true);
+
+  const [siteSettings, setSiteSettings] = useState<AdminSiteSettings>(defaultSiteSettings);
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [newAdminPasswordConfirmation, setNewAdminPasswordConfirmation] = useState("");
+  const [newGuestPassword, setNewGuestPassword] = useState("");
+  const [newGuestPasswordConfirmation, setNewGuestPasswordConfirmation] = useState("");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editEventId, setEditEventId] = useState("");
@@ -138,6 +161,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchEvents();
     fetchMembers();
+    fetchSiteSettings();
   }, []);
 
   useEffect(() => {
@@ -175,6 +199,15 @@ export default function AdminDashboard() {
   const fetchMembers = async () => {
     const { data } = await adminRequest<{ data: ClubMember[] }>("/api/admin/members");
     if (data) setMembers(data);
+  };
+
+  const fetchSiteSettings = async () => {
+    try {
+      const { settings } = await adminRequest<{ settings: AdminSiteSettings }>("/api/admin/settings");
+      if (settings) setSiteSettings(settings);
+    } catch (error) {
+      console.error("사이트 설정을 불러오지 못했습니다.", error);
+    }
   };
 
   const fetchApplicants = async (eventId: string) => {
@@ -271,6 +304,59 @@ export default function AdminDashboard() {
     if (!await askForConfirmation(`${name} 님을 임원진에서 해임하고 일반 부원으로 되돌리시겠습니까?`, "해임")) return;
     try { await adminRequest(`/api/admin/members/${id}`, { method: "PATCH", body: JSON.stringify({ user_type: "member" }) }); fetchMembers(); showToast("임원진 권한을 해제했습니다.", "success"); }
     catch (error) { showToast("오류: " + (error as Error).message, "error"); }
+  };
+
+  const handleSaveSiteSettings = async () => {
+    const changesAdminPassword = Boolean(newAdminPassword || newAdminPasswordConfirmation);
+    const changesGuestPassword = Boolean(newGuestPassword || newGuestPasswordConfirmation);
+    if (changesAdminPassword && newAdminPassword !== newAdminPasswordConfirmation) {
+      showToast("임원진 비밀번호 확인이 일치하지 않습니다.", "error");
+      return;
+    }
+    if (changesGuestPassword && newGuestPassword !== newGuestPasswordConfirmation) {
+      showToast("게스트 비밀번호 확인이 일치하지 않습니다.", "error");
+      return;
+    }
+    if ((changesAdminPassword && newAdminPassword.length < 8) || (changesGuestPassword && newGuestPassword.length < 8)) {
+      showToast("새 비밀번호는 8자 이상으로 입력해주세요.", "error");
+      return;
+    }
+    if ((changesAdminPassword || changesGuestPassword) && !await askForConfirmation(
+      changesAdminPassword
+        ? "임원진 비밀번호를 바꾸면 현재 접속 중인 모든 임원진은 새 비밀번호로 다시 로그인해야 합니다. 변경할까요?"
+        : "게스트 공용 비밀번호를 변경할까요?",
+      "변경",
+    )) return;
+
+    const payload: Record<string, string> = {
+      bank_name: siteSettings.bankName,
+      bank_account: siteSettings.bankAccount,
+      account_holder: siteSettings.accountHolder,
+    };
+    if (changesAdminPassword) payload.admin_password = newAdminPassword;
+    if (changesGuestPassword) payload.guest_password = newGuestPassword;
+
+    try {
+      setIsSavingSettings(true);
+      const result = await adminRequest<{ settings: AdminSiteSettings; adminPasswordChanged: boolean }>("/api/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      setSiteSettings(result.settings);
+      setNewAdminPassword("");
+      setNewAdminPasswordConfirmation("");
+      setNewGuestPassword("");
+      setNewGuestPasswordConfirmation("");
+      showToast(result.adminPasswordChanged ? "설정을 저장했습니다. 새 비밀번호로 다시 로그인해주세요." : "설정을 저장했습니다.", "success");
+      if (result.adminPasswordChanged) window.setTimeout(() => {
+        router.replace("/admin/login");
+        router.refresh();
+      }, 1200);
+    } catch (error) {
+      showToast("설정 저장 중 오류가 발생했습니다: " + (error as Error).message, "error");
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   const updateAttendanceStatus = async (appId: string, status: string) => {
@@ -510,6 +596,7 @@ export default function AdminDashboard() {
             <button onClick={() => setAdminTab("monthly")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "monthly" ? "border-blue-400 text-blue-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>📊 월별 출석부</button>
             <button onClick={() => setAdminTab("members")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "members" ? "border-emerald-400 text-emerald-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>👥 부원 명단</button>
             <button onClick={() => setAdminTab("executives")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "executives" ? "border-rose-400 text-rose-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>👑 임원진 관리</button>
+            <button onClick={() => setAdminTab("settings")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "settings" ? "border-slate-200 text-white" : "border-transparent text-slate-400 hover:text-slate-200"}`}>설정</button>
             <button onClick={() => setAdminTab("register")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "register" ? "border-purple-400 text-purple-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>🚀 정기운동 등록</button>
             <button onClick={() => setAdminTab("special")} className={`py-4 border-b-2 whitespace-nowrap transition-all ${adminTab === "special" ? "border-pink-400 text-pink-400" : "border-transparent text-slate-400 hover:text-slate-200"}`}>🎈 행사·번개 등록</button>
           </div>
@@ -860,6 +947,60 @@ export default function AdminDashboard() {
                       ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {adminTab === "settings" && (
+            <div className="w-full p-4 md:p-10 overflow-y-auto bg-slate-50 custom-scrollbar">
+              <div className="max-w-2xl mx-auto space-y-6">
+                <div className="bg-white p-5 md:p-7 rounded-2xl shadow-sm border border-slate-100">
+                  <h2 className="font-black text-lg md:text-xl text-slate-800">사이트 설정</h2>
+                  <p className="mt-1 text-sm text-slate-500">게스트비 안내 계좌와 공용 비밀번호를 관리합니다.</p>
+                </div>
+
+                <section className="bg-white p-5 md:p-7 rounded-2xl shadow-sm border border-slate-100">
+                  <h3 className="font-black text-base text-slate-800">게스트비 안내 계좌</h3>
+                  <p className="mt-1 text-xs text-slate-500">게스트 신청 시 표시되고, 계좌번호를 누르면 복사됩니다.</p>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-bold text-slate-700">은행명
+                      <input value={siteSettings.bankName} onChange={(event) => setSiteSettings((current) => ({ ...current, bankName: event.target.value }))} maxLength={40} className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                    </label>
+                    <label className="block text-sm font-bold text-slate-700">예금주
+                      <input value={siteSettings.accountHolder} onChange={(event) => setSiteSettings((current) => ({ ...current, accountHolder: event.target.value }))} maxLength={40} className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                    </label>
+                    <label className="block text-sm font-bold text-slate-700 sm:col-span-2">계좌번호
+                      <input value={siteSettings.bankAccount} onChange={(event) => setSiteSettings((current) => ({ ...current, bankAccount: event.target.value }))} inputMode="numeric" maxLength={30} className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="bg-white p-5 md:p-7 rounded-2xl shadow-sm border border-slate-100">
+                  <h3 className="font-black text-base text-slate-800">공용 비밀번호</h3>
+                  <p className="mt-1 text-xs text-slate-500">현재 비밀번호는 표시되지 않습니다. 비워 두면 기존 비밀번호를 유지합니다.</p>
+                  <div className="mt-5 space-y-6">
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3"><h4 className="font-bold text-sm text-slate-800">임원진 페이지 비밀번호</h4>{siteSettings.adminPasswordManagedHere && <span className="text-xs font-bold text-emerald-600">사이트 설정으로 관리 중</span>}</div>
+                      <p className="mt-1 text-xs text-slate-500">변경하면 현재 접속 중인 모든 임원진이 새 비밀번호로 다시 로그인해야 합니다.</p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <input type="password" autoComplete="new-password" value={newAdminPassword} onChange={(event) => setNewAdminPassword(event.target.value)} placeholder="새 비밀번호 (8자 이상)" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                        <input type="password" autoComplete="new-password" value={newAdminPasswordConfirmation} onChange={(event) => setNewAdminPasswordConfirmation(event.target.value)} placeholder="새 비밀번호 확인" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-4">
+                      <div className="flex items-center justify-between gap-3"><h4 className="font-bold text-sm text-slate-800">게스트 공용 비밀번호</h4>{siteSettings.guestPasswordManagedHere && <span className="text-xs font-bold text-emerald-600">사이트 설정으로 관리 중</span>}</div>
+                      <p className="mt-1 text-xs text-slate-500">게스트가 운동 신청할 때 입력하는 공용 비밀번호입니다.</p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <input type="password" autoComplete="new-password" value={newGuestPassword} onChange={(event) => setNewGuestPassword(event.target.value)} placeholder="새 비밀번호 (8자 이상)" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                        <input type="password" autoComplete="new-password" value={newGuestPasswordConfirmation} onChange={(event) => setNewGuestPasswordConfirmation(event.target.value)} placeholder="새 비밀번호 확인" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <button type="button" onClick={handleSaveSiteSettings} disabled={isSavingSettings} className="w-full rounded-xl bg-slate-900 px-5 py-4 text-sm font-black text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  {isSavingSettings ? "저장 중..." : "설정 저장"}
+                </button>
               </div>
             </div>
           )}

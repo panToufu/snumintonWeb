@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { isScryptHash, verifyScryptHash } from "@/lib/password-hash";
+import { getStoredSiteSettings } from "@/lib/site-settings";
 
 const SESSION_COOKIE = "snuminton_admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -12,17 +13,20 @@ type SessionPayload = {
   version: string;
 };
 
-function getConfig() {
-  const passwordHash = process.env.ADMIN_PASSWORD_HASH;
+async function getConfig() {
+  const storedSettings = await getStoredSiteSettings();
+  const storedPasswordHash = storedSettings?.adminPasswordHash;
+  const usesStoredPassword = isScryptHash(storedPasswordHash ?? undefined);
+  const passwordHash = usesStoredPassword ? storedPasswordHash : process.env.ADMIN_PASSWORD_HASH;
   const sessionSecret = process.env.ADMIN_SESSION_SECRET;
-  const version = process.env.ADMIN_SESSION_VERSION ?? "1";
+  const version = usesStoredPassword ? `database-${storedSettings?.authVersion ?? 1}` : (process.env.ADMIN_SESSION_VERSION ?? "1");
 
   if (!passwordHash || !sessionSecret) return null;
   return { passwordHash, sessionSecret, version };
 }
 
-export function isAdminAuthConfigured() {
-  const config = getConfig();
+export async function isAdminAuthConfigured() {
+  const config = await getConfig();
   return Boolean(config && isScryptHash(config.passwordHash));
 }
 
@@ -35,13 +39,13 @@ function sign(payload: string, secret: string) {
 }
 
 export async function verifyAdminPassword(password: string) {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) return false;
   return verifyScryptHash(password, config.passwordHash);
 }
 
 export async function createAdminSession() {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) throw new Error("임원진 인증 환경 변수가 설정되지 않았습니다.");
 
   const payload: SessionPayload = {
@@ -63,7 +67,7 @@ export async function createAdminSession() {
 
 
 export async function hasAdminSession() {
-  const config = getConfig();
+  const config = await getConfig();
   if (!config) return false;
 
   const cookieStore = await cookies();

@@ -11,6 +11,18 @@ import { koreaDateInputValue } from "@/lib/attendance-range";
 import type { AttendanceEvent, AttendanceRanking, CalendarEvent, ClubApplication, ClubEvent, ClubMember, ClubPoll, SelectedClubEvent } from "@/lib/club-types";
 import { getRegistrationStart } from "@/lib/registration-time";
 
+type PaymentSettings = {
+  bankName: string;
+  bankAccount: string;
+  accountHolder: string;
+};
+
+const defaultPaymentSettings: PaymentSettings = {
+  bankName: "카카오뱅크",
+  bankAccount: "3333335748122",
+  accountHolder: "김민성",
+};
+
 async function publicRequest<T>(path: string, init?: RequestInit) {
   const response = await fetch(path, {
     ...init,
@@ -234,6 +246,7 @@ export default function Home() {
   const [executives, setExecutives] = useState<ClubMember[]>([]);
   const [isGuestPaymentModalOpen, setIsGuestPaymentModalOpen] = useState(false);
   const [isPastEventsOpen, setIsPastEventsOpen] = useState(false);
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(defaultPaymentSettings);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false); 
@@ -288,7 +301,7 @@ export default function Home() {
 
   const fetchPublicData = async () => {
     try {
-      const data = await publicRequest<{ events: ClubEvent[]; polls: ClubPoll[]; executives: ClubMember[]; serverTime: string }>("/api/public/bootstrap");
+      const data = await publicRequest<{ events: ClubEvent[]; polls: ClubPoll[]; executives: ClubMember[]; paymentSettings: PaymentSettings; serverTime: string }>("/api/public/bootstrap");
       const calendarEvents: CalendarEvent[] = data.events.map(ev => ({
         id: ev.id, 
         title: ev.title, 
@@ -300,6 +313,7 @@ export default function Home() {
       setEvents(calendarEvents);
       setPolls(data.polls);
       setExecutives(data.executives);
+      setPaymentSettings(data.paymentSettings ?? defaultPaymentSettings);
       setTimeOffset(new Date(data.serverTime).getTime() - Date.now());
     } catch (error) {
       console.error("공개 초기 데이터 조회 실패:", error);
@@ -971,7 +985,7 @@ export default function Home() {
               <button 
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText("3333365925467");
+                    await navigator.clipboard.writeText(paymentSettings.bankAccount);
                     showToast("계좌번호가 복사되었습니다! 📋", "success");
                   } catch {
                     showToast("계좌번호를 복사하지 못했습니다.", "error");
@@ -981,8 +995,8 @@ export default function Home() {
                 title="클릭해서 복사하기"
               >
                 <div className="flex-1 flex flex-col items-center justify-center leading-tight">
-                  <span className="text-[13px] md:text-sm">카카오뱅크 3333365925467</span>
-                  <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: 안진식</span>
+                  <span className="text-[13px] md:text-sm">{paymentSettings.bankName} {paymentSettings.bankAccount}</span>
+                  <span className="text-[11px] md:text-xs text-slate-500 font-bold mt-1">예금주: {paymentSettings.accountHolder}</span>
                 </div>
                 <span className="text-slate-400 group-hover:text-blue-500 transition-colors text-lg flex-shrink-0">📋</span>
               </button>

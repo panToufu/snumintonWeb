@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPaymentSettings } from "@/lib/site-settings";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -9,10 +10,11 @@ const publicEvents = "id,title,type,start_at,end_at,location,max_capacity,partic
 export async function GET() {
   try {
     const supabase = getSupabaseAdmin();
-    const [eventsResult, pollsResult, executivesResult] = await Promise.all([
+    const [eventsResult, pollsResult, executivesResult, paymentSettings] = await Promise.all([
       supabase.from("events").select(publicEvents).order("start_at", { ascending: true }),
       supabase.from("polls").select("id,title,poll_type,deadline,created_at").order("created_at", { ascending: false }),
       supabase.from("members").select("name,user_type").in("user_type", ["회장", "부회장", "임원진"]),
+      getPaymentSettings(),
     ]);
 
     if (eventsResult.error || pollsResult.error || executivesResult.error) {
@@ -25,6 +27,7 @@ export async function GET() {
         events: eventsResult.data ?? [],
         polls: pollsResult.data ?? [],
         executives: executivesResult.data ?? [],
+        paymentSettings,
         serverTime: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "no-store" } },

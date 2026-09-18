@@ -1,6 +1,6 @@
 import "server-only";
 
-import { scrypt, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
 type ParsedHash = {
   salt: string;
@@ -24,6 +24,12 @@ function deriveKey(password: string, salt: string) {
 
 export function isScryptHash(passwordHash: string | undefined) {
   return Boolean(passwordHash && parseScryptHash(passwordHash));
+}
+
+export async function hashScryptPassword(password: string) {
+  const salt = randomBytes(16).toString("base64url");
+  const derived = await deriveKey(password, salt);
+  return `scrypt:${salt}:${derived.toString("base64url")}`;
 }
 
 export async function verifyScryptHash(password: string, passwordHash: string | undefined) {

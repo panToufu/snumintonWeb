@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { findMatchingMember } from "@/lib/member-name";
 import { isScryptHash, verifyScryptHash } from "@/lib/password-hash";
 import { getRegistrationStart } from "@/lib/registration-time";
+import { getGuestPasswordHash } from "@/lib/site-settings";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
     let phoneNumber: string | null = null;
     if (userType === "guest") {
       const guestPassword = typeof body.guest_password === "string" ? body.guest_password : "";
-      const guestPasswordHash = process.env.GUEST_PASSWORD_HASH;
+      const guestPasswordHash = await getGuestPasswordHash();
       if (!isScryptHash(guestPasswordHash)) return requestError("게스트 신청 설정을 확인해주세요.", 503);
       if (!guestPassword || guestPassword.length > 200 || !(await verifyScryptHash(guestPassword, guestPasswordHash))) {
         recordFailedAttempt(key);
