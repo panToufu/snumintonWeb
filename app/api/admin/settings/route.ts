@@ -61,10 +61,10 @@ export async function PATCH(request: Request) {
   const adminPassword = changeAdminPassword ? body.admin_password : undefined;
   const guestPassword = changeGuestPassword ? body.guest_password : undefined;
   if (
-    (changeAdminPassword && (typeof adminPassword !== "string" || adminPassword.length < 8 || adminPassword.length > 200))
-    || (changeGuestPassword && (typeof guestPassword !== "string" || guestPassword.length < 8 || guestPassword.length > 200))
+    (changeAdminPassword && (typeof adminPassword !== "string" || adminPassword.length < 4 || adminPassword.length > 200))
+    || (changeGuestPassword && (typeof guestPassword !== "string" || guestPassword.length < 4 || guestPassword.length > 200))
   ) {
-    return NextResponse.json({ message: "새 비밀번호는 8자 이상 200자 이하로 입력해주세요." }, { status: 400 });
+    return NextResponse.json({ message: "새 비밀번호는 4자 이상 200자 이하로 입력해주세요." }, { status: 400 });
   }
 
   try {

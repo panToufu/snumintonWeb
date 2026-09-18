@@ -317,8 +317,8 @@ export default function AdminDashboard() {
       showToast("게스트 비밀번호 확인이 일치하지 않습니다.", "error");
       return;
     }
-    if ((changesAdminPassword && newAdminPassword.length < 8) || (changesGuestPassword && newGuestPassword.length < 8)) {
-      showToast("새 비밀번호는 8자 이상으로 입력해주세요.", "error");
+    if ((changesAdminPassword && newAdminPassword.length < 4) || (changesGuestPassword && newGuestPassword.length < 4)) {
+      showToast("새 비밀번호는 4자 이상으로 입력해주세요.", "error");
       return;
     }
     if ((changesAdminPassword || changesGuestPassword) && !await askForConfirmation(
@@ -983,7 +983,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center justify-between gap-3"><h4 className="font-bold text-sm text-slate-800">임원진 페이지 비밀번호</h4>{siteSettings.adminPasswordManagedHere && <span className="text-xs font-bold text-emerald-600">사이트 설정으로 관리 중</span>}</div>
                       <p className="mt-1 text-xs text-slate-500">변경하면 현재 접속 중인 모든 임원진이 새 비밀번호로 다시 로그인해야 합니다.</p>
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <input type="password" autoComplete="new-password" value={newAdminPassword} onChange={(event) => setNewAdminPassword(event.target.value)} placeholder="새 비밀번호 (8자 이상)" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                        <input type="password" autoComplete="new-password" value={newAdminPassword} onChange={(event) => setNewAdminPassword(event.target.value)} placeholder="새 비밀번호 (4자 이상)" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
                         <input type="password" autoComplete="new-password" value={newAdminPasswordConfirmation} onChange={(event) => setNewAdminPasswordConfirmation(event.target.value)} placeholder="새 비밀번호 확인" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
                       </div>
                     </div>
@@ -991,7 +991,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center justify-between gap-3"><h4 className="font-bold text-sm text-slate-800">게스트 공용 비밀번호</h4>{siteSettings.guestPasswordManagedHere && <span className="text-xs font-bold text-emerald-600">사이트 설정으로 관리 중</span>}</div>
                       <p className="mt-1 text-xs text-slate-500">게스트가 운동 신청할 때 입력하는 공용 비밀번호입니다.</p>
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <input type="password" autoComplete="new-password" value={newGuestPassword} onChange={(event) => setNewGuestPassword(event.target.value)} placeholder="새 비밀번호 (8자 이상)" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
+                        <input type="password" autoComplete="new-password" value={newGuestPassword} onChange={(event) => setNewGuestPassword(event.target.value)} placeholder="새 비밀번호 (4자 이상)" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
                         <input type="password" autoComplete="new-password" value={newGuestPasswordConfirmation} onChange={(event) => setNewGuestPasswordConfirmation(event.target.value)} placeholder="새 비밀번호 확인" maxLength={200} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500" />
                       </div>
                     </div>
