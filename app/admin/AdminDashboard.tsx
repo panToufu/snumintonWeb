@@ -541,8 +541,11 @@ export default function AdminDashboard() {
 
   const currentSelectedEventObj = events.find(e => e.id === selectedEventId);
   const attendanceEvents = events.filter(isAttendanceManagedEvent);
+  const rosterEvents = events.filter(event => event.type !== "lightning");
   const selectedAttendanceEvent = currentSelectedEventObj && isAttendanceManagedEvent(currentSelectedEventObj) ? currentSelectedEventObj : null;
+  const selectedRosterEvent = currentSelectedEventObj && currentSelectedEventObj.type !== "lightning" ? currentSelectedEventObj : null;
   const selectedAttendanceDateKey = selectedAttendanceEvent && selectedEventDate ? koreaDateInputValue(selectedEventDate) : null;
+  const selectedRosterDateKey = selectedRosterEvent && selectedEventDate ? koreaDateInputValue(selectedEventDate) : null;
   const selectEventForAttendance = (info: EventClickArg) => {
     setSelectedEventId(info.event.id);
     setSelectedEventTitle(info.event.title);
@@ -608,23 +611,24 @@ export default function AdminDashboard() {
             <>
               <div className="w-full md:w-[55%] border-b md:border-b-0 md:border-r border-slate-200 p-3 md:p-6 overflow-y-auto bg-white custom-scrollbar">
                 <div className="mb-2 md:mb-4"><h2 className="font-bold text-slate-800 text-sm md:text-base">출석 체크용 캘린더</h2></div>
-                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={attendanceEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClassNames={(arg) => arg.event.id === selectedEventId ? ["attendance-selected-event"] : []} dayCellClassNames={(arg) => selectedAttendanceDateKey === koreaDateInputValue(arg.date) ? ["attendance-selected-day"] : []} eventClick={selectEventForAttendance} />
+                <FullCalendar plugins={[dayGridPlugin, interactionPlugin, luxon3Plugin]} initialView="dayGridMonth" events={rosterEvents} timeZone="Asia/Seoul" height="auto" locale="ko" displayEventTime={false} headerToolbar={{ left: 'title', center: '', right: 'prev,next' }} eventClassNames={(arg) => arg.event.id === selectedEventId ? ["attendance-selected-event"] : []} dayCellClassNames={(arg) => selectedRosterDateKey === koreaDateInputValue(arg.date) ? ["attendance-selected-day"] : []} eventClick={selectEventForAttendance} />
               </div>
               <div className="w-full md:w-[45%] p-4 md:p-6 overflow-y-auto custom-scrollbar bg-slate-50/50">
-                {!selectedAttendanceEvent ? (
+                {!selectedRosterEvent ? (
                   <div className="h-40 md:h-full flex flex-col items-center justify-center text-slate-400"><span className="text-3xl md:text-4xl mb-2 md:mb-4">👆</span><p className="font-medium text-sm">달력에서 일정을 선택해주세요.</p></div>
                 ) : (
                   <div>
                     <div className="flex justify-between items-end mb-4 md:mb-6">
                       <div>
                         <span className="text-[10px] md:text-xs font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded mb-1 md:mb-2 inline-block">{selectedEventDate && new Date(selectedEventDate).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>
-                        <h2 className="text-lg md:text-xl font-black text-slate-900">{selectedEventTitle} 출석부</h2>
+                        <h2 className="text-lg md:text-xl font-black text-slate-900">{selectedEventTitle} {selectedAttendanceEvent ? "출석부" : "신청 명단"}</h2>
+                        {!selectedAttendanceEvent && <p className="mt-1 text-xs font-medium text-slate-500">행사는 출석 체크 없이 신청 정보만 확인·수정할 수 있습니다.</p>}
                       </div>
-                      <span className="text-xs md:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 md:px-3 py-1.5 rounded-xl shadow-sm">출석관리 {attendanceDisplayList.length}명</span>
+                      <span className="text-xs md:text-sm font-bold text-slate-600 bg-white border border-slate-200 px-2 md:px-3 py-1.5 rounded-xl shadow-sm">{selectedAttendanceEvent ? "출석관리" : "신청자"} {attendanceDisplayList.length}명</span>
                     </div>
 
                     <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm mb-6">
-                      {attendanceDisplayList.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">출석 체크할 부원이 없습니다.</div> : attendanceDisplayList.map((app) => {
+                      {attendanceDisplayList.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">{selectedAttendanceEvent ? "출석 체크할 부원이 없습니다." : "신청자가 없습니다."}</div> : attendanceDisplayList.map((app) => {
                           const status = app.attendance_status || 'none';
                           
                           let partialText = "";
@@ -664,12 +668,12 @@ export default function AdminDashboard() {
                               </div>
                               
                               <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
-                                <div className="flex rounded-lg overflow-hidden shadow-sm border border-slate-200">
+                                {selectedAttendanceEvent && <div className="flex rounded-lg overflow-hidden shadow-sm border border-slate-200">
                                   <button onClick={() => updateAttendanceStatus(app.id, 'present')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${presentClass}`}>출석</button>
                                   <button onClick={() => updateAttendanceStatus(app.id, 'late')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${lateClass}`}>지각</button>
                                   <button onClick={() => updateAttendanceStatus(app.id, 'absent')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all border-r ${absentClass}`}>불참</button>
                                   <button onClick={() => updateAttendanceStatus(app.id, 'none')} className={`px-2 md:px-3 py-1.5 text-[10px] md:text-xs font-bold transition-all ${noneClass}`}>대기</button>
-                                </div>
+                                </div>}
                                 <button onClick={() => { setEditAppTarget(app); setIsEditAppModalOpen(true); }} className="p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0 ml-1" title="신청 정보 수정">✏️</button>
                                 <button onClick={() => handleDeleteApplication(app.id)} className="p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-xs md:text-sm flex-shrink-0" title="신청 삭제">✕</button>
                               </div>
@@ -1220,6 +1224,21 @@ export default function AdminDashboard() {
                    >
                      <option value="tue_thu">화/목 레슨</option>
                      <option value="sat">토요 레슨</option>
+                   </select>
+                 </div>
+              )}
+
+              {(currentSelectedEventObj?.ask_level || editAppTarget.level) && (
+                 <div>
+                   <label className="block text-xs font-bold text-slate-500 mb-1.5 ml-1">실력(레벨)</label>
+                   <select
+                     value={editAppTarget.level || 'A/B'}
+                     onChange={e => setEditAppTarget({...editAppTarget, level: e.target.value})}
+                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 font-bold text-sm"
+                   >
+                     <option value="A/B">상</option>
+                     <option value="C">중</option>
+                     <option value="D/초심">하</option>
                    </select>
                  </div>
               )}
