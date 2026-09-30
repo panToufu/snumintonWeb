@@ -6,6 +6,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const attendanceRoles = ["member", "회장", "부회장", "임원진"];
+
 export async function GET(request: Request) {
   if (!(await hasAttendanceAccess())) {
     return NextResponse.json({ message: "출석 확인을 위해 이름을 다시 입력해주세요." }, { status: 401 });
@@ -20,7 +22,7 @@ export async function GET(request: Request) {
   try {
     const supabase = getSupabaseAdmin();
     const [membersResult, eventsResult] = await Promise.all([
-      supabase.from("members").select("id,name,user_type").order("name", { ascending: true }),
+      supabase.from("members").select("id,name,user_type").in("user_type", attendanceRoles).order("name", { ascending: true }),
       supabase.from("events").select("id,start_at,title,type,is_attendance_counted").gte("start_at", range.startAt).lt("start_at", range.endAt).order("start_at", { ascending: true }),
     ]);
     if (membersResult.error || eventsResult.error) {
@@ -34,7 +36,8 @@ export async function GET(request: Request) {
     const { data: applications, error: applicationsError } = await supabase
       .from("applications")
       .select("user_name,event_id,attendance_status")
-      .in("event_id", events.map((event) => event.id));
+      .in("event_id", events.map((event) => event.id))
+      .in("user_type", attendanceRoles);
     if (applicationsError) {
       console.error("출석 신청 데이터 조회 실패", applicationsError);
       return NextResponse.json({ message: "출석 데이터를 불러오지 못했습니다." }, { status: 500 });

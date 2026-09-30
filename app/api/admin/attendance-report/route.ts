@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
+const attendanceRoles = ["member", "회장", "부회장", "임원진"];
+
 export async function GET(request: Request) {
   const unauthorized = await requireAdminApi(request);
   if (unauthorized) return unauthorized;
@@ -32,7 +34,8 @@ export async function GET(request: Request) {
     const { data: applications, error: applicationsError } = await supabase
       .from("applications")
       .select("user_name, event_id, attendance_status")
-      .in("event_id", eventIds);
+      .in("event_id", eventIds)
+      .in("user_type", attendanceRoles);
     if (applicationsError) return databaseError(applicationsError);
     return NextResponse.json({ events: countedEvents, applications: applications ?? [] });
   } catch (error) {
