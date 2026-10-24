@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { MAX_OB_APPLICATIONS_PER_EVENT, OB_CAPACITY_ERROR_CODE, OB_CAPACITY_ERROR_MESSAGE } from "@/lib/application-policy";
 import { findMatchingMember } from "@/lib/member-name";
 import { isScryptHash, verifyScryptHash } from "@/lib/password-hash";
 import { getRegistrationStart } from "@/lib/registration-time";
@@ -184,6 +185,19 @@ export async function POST(request: Request) {
       : null;
     if (eventRow.ask_level && !level) return requestError("실력(레벨)을 선택하셔야 신청이 가능합니다.");
 
+    if (userType === "ob") {
+      const { count, error: capacityError } = await supabase
+        .from("applications")
+        .select("id", { count: "exact", head: true })
+        .eq("event_id", eventId)
+        .eq("user_type", "ob");
+      if (capacityError) throw capacityError;
+      if (count === null) throw new Error("OB 신청 인원을 확인하지 못했습니다.");
+      if (count >= MAX_OB_APPLICATIONS_PER_EVENT) {
+        return NextResponse.json({ message: OB_CAPACITY_ERROR_MESSAGE, code: OB_CAPACITY_ERROR_CODE }, { status: 409 });
+      }
+    }
+
     const { data: application, error: insertError } = await supabase
       .from("applications")
       .insert({
@@ -202,6 +216,10 @@ export async function POST(request: Request) {
       .select("id,user_name,user_type,participation_type,lesson_choice,afterparty_join,level,applied_at")
       .single();
     if (insertError) {
+      // The database trigger is the final guard against simultaneous requests.
+      if (insertError.code === "P0001" && insertError.message === OB_CAPACITY_ERROR_CODE) {
+        return NextResponse.json({ message: OB_CAPACITY_ERROR_MESSAGE, code: OB_CAPACITY_ERROR_CODE }, { status: 409 });
+      }
       if (insertError.code === "23505") {
         return requestError(userType === "guest"
           ? "이미 이 연락처로 신청한 일정입니다. 명단을 다시 확인해주세요."

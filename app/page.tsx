@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import luxon3Plugin from "@fullcalendar/luxon3";
 import { useAppFeedback } from "@/components/AppFeedback";
+import SiteNotice from "@/components/SiteNotice";
 import { koreaDateInputValue } from "@/lib/attendance-range";
+import { MAX_OB_APPLICATIONS_PER_EVENT } from "@/lib/application-policy";
 import type { AttendanceEvent, AttendanceRanking, CalendarEvent, ClubApplication, ClubEvent, ClubMember, ClubPoll, SelectedClubEvent } from "@/lib/club-types";
 import { getRegistrationStart } from "@/lib/registration-time";
 
@@ -89,6 +91,11 @@ const dict = {
     memberType: "회원 구분",
     member: "부원",
     ob: "OB",
+    obPolicy: `OB는 한 운동에 최대 ${MAX_OB_APPLICATIONS_PER_EVENT}명까지 신청할 수 있습니다.`,
+    obFull: "OB 신청 마감",
+    obCount: "현재 OB 신청",
+    refreshApplicants: "명단 새로고침",
+    applicantsUnavailable: "신청 인원을 불러오지 못했습니다. 새로고침해주세요.",
     guest: "게스트",
     guestPw: "게스트 확인용 비밀번호",
     phoneLabel: "연락처 (게스트 필수)",
@@ -172,6 +179,11 @@ const dict = {
     memberType: "Membership",
     member: "Member",
     ob: "OB",
+    obPolicy: `Up to ${MAX_OB_APPLICATIONS_PER_EVENT} OB participants can register per session.`,
+    obFull: "OB registration full",
+    obCount: "OB registrations",
+    refreshApplicants: "Refresh list",
+    applicantsUnavailable: "Could not load registrations. Please refresh.",
     guest: "Guest",
     guestPw: "Guest Password",
     phoneLabel: "Phone Number (Required for Guests)",
@@ -214,7 +226,12 @@ export default function Home() {
   const [polls, setPolls] = useState<ClubPoll[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SelectedClubEvent | null>(null);
-  const [applicants, setApplicants] = useState<ClubApplication[]>([]);
+  const [applicantState, setApplicantState] = useState<{ eventId: string; data: ClubApplication[]; status: "loading" | "loaded" | "error" } | null>(null);
+  const applicantRequestId = useRef(0);
+  const currentApplicants = applicantState?.eventId === selectedEvent?.id ? applicantState : null;
+  const applicants = currentApplicants?.data ?? [];
+  const obCount = applicants.filter((application) => application.user_type === "ob").length;
+  const obCapacityReached = currentApplicants?.status === "loaded" && obCount >= MAX_OB_APPLICATIONS_PER_EVENT;
   const [activeTab, setActiveTab] = useState<"info" | "list">("info");
   
   const [userName, setUserName] = useState("");
@@ -321,12 +338,14 @@ export default function Home() {
   };
 
   const fetchApplicants = async (eventId: string) => {
+    const requestId = ++applicantRequestId.current;
+    setApplicantState({ eventId, data: [], status: "loading" });
     try {
       const { data } = await publicRequest<{ data: ClubApplication[] }>(`/api/public/applications/${encodeURIComponent(eventId)}`);
-      setApplicants(data);
+      if (requestId === applicantRequestId.current) setApplicantState({ eventId, data, status: "loaded" });
     } catch (error) {
       console.error("신청 명단 조회 실패:", error);
-      setApplicants([]);
+      if (requestId === applicantRequestId.current) setApplicantState({ eventId, data: [], status: "error" });
     }
   };
 
@@ -413,6 +432,10 @@ export default function Home() {
     const openTime = getRegistrationStart(selectedEvent, userType);
     if (!openTime) return { disabled: true, text: t.checking, style: "bg-gray-200 text-gray-500 cursor-not-allowed" };
 
+    if (userType === "ob" && obCapacityReached) {
+      return { disabled: true, text: t.obFull, style: "bg-slate-200 text-slate-500 cursor-not-allowed shadow-none" };
+    }
+
     const isOpen = now.getTime() >= openTime.getTime();
     const timeFormatOptions: Intl.DateTimeFormatOptions = { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", timeZone: "Asia/Seoul" };
     const timeString = openTime.toLocaleString(lang === "ko" ? "ko-KR" : "en-US", timeFormatOptions);
@@ -498,6 +521,7 @@ export default function Home() {
       fetchApplicants(selectedEvent.id); setActiveTab("list");
     } catch (error) {
       showToast(t.alertError + (error instanceof Error ? error.message : ""), "error");
+      if (selectedEvent) void fetchApplicants(selectedEvent.id);
     } finally {
       setIsSubmitting(false); 
     }
@@ -562,7 +586,8 @@ export default function Home() {
 
   return (
     <main className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen relative flex flex-col">
-      
+      <SiteNotice lang={lang} />
+
       <div className="absolute top-6 right-6 md:top-8 md:right-8 flex gap-3 z-50">
         <button onClick={() => setLang(lang === "ko" ? "en" : "ko")} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-full transition-colors shadow-sm">
           {lang === "ko" ? "🌐 EN" : "🌐 KO"}
@@ -570,7 +595,7 @@ export default function Home() {
         <a href="/admin/login" className="text-2xl opacity-30 hover:opacity-100 transition-opacity" title="임원진 로그인" aria-label="임원진 로그인">⚙️</a>
       </div>
 
-      <div className="flex items-center justify-center gap-3 my-8">
+      <div className="flex items-center justify-center gap-3 mt-16 mb-8 md:my-8">
         <Image src="/logo.png" alt="Snuminton Logo" width={80} height={80} className="w-10 h-10 md:w-20 md:h-20 object-contain drop-shadow-sm" priority />
         <h1 className="text-3xl md:text-4xl font-black text-blue-900 tracking-tighter" style={{ fontFamily: "'Oswald', sans-serif", letterSpacing: "0.02em" }}>SNUMINTON</h1>
       </div>
@@ -755,6 +780,16 @@ export default function Home() {
                     )}
                   </div>
 
+                  {selectedEvent?.allow_registration !== false && (selectedEvent?.type === "normal" || selectedEvent?.type === "lesson") && (
+                    <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                      <p className="font-bold">{t.obPolicy}</p>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs" aria-live="polite">
+                        <span>{currentApplicants?.status === "loaded" ? `${t.obCount}: ${obCount} / ${MAX_OB_APPLICATIONS_PER_EVENT}${obCapacityReached ? ` · ${t.obFull}` : ""}` : currentApplicants?.status === "error" ? t.applicantsUnavailable : t.checking}</span>
+                        <button type="button" disabled={currentApplicants?.status === "loading"} onClick={() => selectedEvent && void fetchApplicants(selectedEvent.id)} className="font-bold underline underline-offset-2 disabled:opacity-50">{t.refreshApplicants}</button>
+                      </div>
+                    </div>
+                  )}
+
                   {selectedEvent?.participating_execs && selectedEvent.participating_execs.length > 0 && (
                     <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
                       <h4 className="text-[11px] font-bold text-slate-500 mb-2.5 uppercase tracking-wide">👑 {t.participatingExecs}</h4>
@@ -890,6 +925,9 @@ export default function Home() {
                     </span>
                   </div>
                   <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar min-h-0">
+                  {(selectedEvent?.type === "normal" || selectedEvent?.type === "lesson") && currentApplicants?.status === "loaded" && (
+                    <p className="mb-4 text-xs font-bold text-blue-700">{t.obCount}: {obCount} / {MAX_OB_APPLICATIONS_PER_EVENT}</p>
+                  )}
                   {applicants.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 py-10"><p className="text-[11px] font-medium">{t.noApplicants}</p></div>
                   ) : (
